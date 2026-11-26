@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paperless
+  namespace: documents
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: paperless
+  template:
+    metadata:
+      labels:
+        app: paperless
+    spec:
+      # Kubernetes injects <SERVICE>_PORT env vars per Service, and the paperless
+      # Service would set PAPERLESS_PORT=tcp://<ip>:8000, which Paperless reads as
+      # its listen port. Everything here uses DNS names, so turn them off.
+      enableServiceLinks: false
+      containers:
+        - name: paperless
+          image: ghcr.io/paperless-ngx/paperless-ngx:3.5.1
+          envFrom:
+            - configMapRef:
+                name: paperless-env
+            - secretRef:
+                name: paperless-secrets
+            # Optional so Paperless starts before the Pocket ID client exists
+            - secretRef:
+                name: paperless-oidc
+                optional: true
+          ports:
+            - name: webui
+              containerPort: 8000
+          # First start runs DB migrations, which can take a few minutes
+          startupProbe:
+            httpGet:
+              path: /
+              port: 8000
+              httpHeaders:
+                - name: Host
+                  value: paperless.documents.svc.cluster.local
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+              httpHeaders:
+                - name: Host
+                  value: paperless.documents.svc.cluster.local
+            periodSeconds: 10
+          volumeMounts:
+            - name: documents-library
+              mountPath: /usr/src/paperless/data
+              subPath: data
+            - name: documents-library
+              mountPath: /usr/src/paperless/media
+              subPath: media
+            - name: documents-library
+              mountPath: /usr/src/paperless/export
+              subPath: export
+            - name: documents-library
+              mountPath: /usr/src/paperless/consume
+              subPath: consume
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 3Gi
+      volumes:
+        - name: documents-library
+          persistentVolumeClaim:
+            claimName: documents-library

@@ -1,0 +1,39 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: sabnzbd
+  namespace: media
+spec:
+  parentRefs:
+    - name: lab-gateway
+      namespace: envoy-gateway-system
+      sectionName: https
+  hostnames:
+    - "sabnzbd.lab.example.com"
+  rules:
+    - backendRefs:
+        - name: sabnzbd
+          port: 8080
+---
+# /api bypasses the Pocket ID SecurityPolicy (argocd/media-sso) so mobile
+# clients keep working; the app still requires its API key on these paths.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: sabnzbd-api
+  namespace: media
+spec:
+  parentRefs:
+    - name: lab-gateway
+      namespace: envoy-gateway-system
+      sectionName: https
+  hostnames:
+    - "sabnzbd.lab.example.com"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: sabnzbd
+          port: 8080

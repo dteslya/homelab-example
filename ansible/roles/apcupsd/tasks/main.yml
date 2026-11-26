@@ -1,0 +1,30 @@
+---
+- name: Install apcupsd
+  ansible.builtin.apt:
+    name: apcupsd
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Deploy apcupsd.conf
+  ansible.builtin.template:
+    src: apcupsd.conf.j2
+    dest: /etc/apcupsd/apcupsd.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart apcupsd
+
+# The Debian package refuses to start until this is set.
+- name: Mark apcupsd as configured
+  ansible.builtin.lineinfile:
+    path: /etc/default/apcupsd
+    regexp: '^ISCONFIGURED='
+    line: ISCONFIGURED=yes
+  notify: Restart apcupsd
+
+- name: Enable apcupsd
+  ansible.builtin.systemd:
+    name: apcupsd
+    enabled: true
+    state: started

@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: karakeep-chrome
+  namespace: documents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: karakeep-chrome
+  template:
+    metadata:
+      labels:
+        app: karakeep-chrome
+    spec:
+      # Stand-in for compose's init: true, so the pause container reaps
+      # Chrome's zombie processes
+      shareProcessNamespace: true
+      containers:
+        - name: chrome
+          # Karakeep's own headless Chrome image. The entrypoint adds
+          # --no-sandbox and the DevTools port 9222, don't override them.
+          image: ghcr.io/karakeep-app/karakeep-chrome:157.0.8103.78-r1
+          args:
+            - --disable-gpu
+            - --disable-dev-shm-usage
+            - --hide-scrollbars
+            - --disable-blink-features=AutomationControlled
+            - --window-size=1440,900
+          ports:
+            - name: devtools
+              containerPort: 9222
+          readinessProbe:
+            tcpSocket:
+              port: 9222
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: tmp
+          emptyDir: {}

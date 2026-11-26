@@ -1,0 +1,6 @@
+# Example of vault.yml, an ansible-vault encrypted file. Copy it to vault.yml,
+# fill in the values, then run: ansible-vault encrypt vault.yml
+# Keys are the vault_* variables referenced by the files in this directory.
+---
+vault_headscale_cf_token: CHANGE_ME
+vault_vps_admin_password_hash: CHANGE_ME

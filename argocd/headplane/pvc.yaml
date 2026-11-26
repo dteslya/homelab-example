@@ -1,0 +1,14 @@
+# Block storage (ext4 on iSCSI), so SQLite locking works and the pod isn't
+# pinned to one node.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: headplane-data-iscsi
+  namespace: headplane
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: truenas-iscsi-config
+  resources:
+    requests:
+      storage: 1Gi

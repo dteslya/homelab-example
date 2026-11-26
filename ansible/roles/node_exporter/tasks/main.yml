@@ -1,0 +1,48 @@
+---
+- name: Install node exporter
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Set node exporter listen address
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (roles/node_exporter)
+      ARGS="--web.listen-address={{ node_exporter_listen }}"
+    dest: /etc/default/prometheus-node-exporter
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart node exporter
+
+- name: Create node exporter drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/prometheus-node-exporter.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Binding to a specific address fails if it starts before the address is up.
+- name: Start node exporter after the network is online
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (roles/node_exporter)
+      [Unit]
+      Wants=network-online.target
+      After=network-online.target
+    dest: /etc/systemd/system/prometheus-node-exporter.service.d/10-network-online.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart node exporter
+
+- name: Enable node exporter
+  ansible.builtin.systemd:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+  ignore_errors: "{{ ansible_check_mode }}"

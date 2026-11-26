@@ -1,0 +1,86 @@
+---
+# Flow: fetch live files -> render templates over a copy (this is what --check --diff shows)
+# -> stage on device + validate -> install -> reload with automatic rollback.
+- name: Packages
+  ansible.builtin.include_tasks: packages.yml
+
+- name: Fetch live configuration
+  delegate_to: localhost
+  check_mode: false
+  changed_when: false
+  ansible.builtin.shell: |
+    set -eu
+    rm -rf "{{ openwrt_config_build_dir }}"
+    mkdir -p "{{ openwrt_config_build_dir }}/live" "{{ openwrt_config_build_dir }}/staged"
+    ssh -o BatchMode=yes {{ ansible_user }}@{{ ansible_host }} \
+      'for f in {{ openwrt_config_files | map(attribute='dest') | join(' ') }}; do [ -e "$f" ] && echo "${f#/}"; done | tar -C / -cf - -T -' \
+      | tar -C "{{ openwrt_config_build_dir }}/live" -xf -
+    cp -R "{{ openwrt_config_build_dir }}/live/." "{{ openwrt_config_build_dir }}/staged/"
+    # Files not on the device yet need their parent directory to render into.
+    cd "{{ openwrt_config_build_dir }}/staged" && mkdir -p {{ openwrt_config_files | map(attribute='dest') | map('dirname') | unique | map('regex_replace', '^/', '') | join(' ') }}
+
+- name: Render configuration
+  delegate_to: localhost
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ openwrt_config_build_dir }}/staged{{ item.dest }}"
+    mode: "{{ item.mode | default('0644') }}"
+  loop: "{{ openwrt_config_files }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  register: openwrt_config_render
+
+- name: Apply changed files
+  when:
+    - not ansible_check_mode
+    - openwrt_config_changed | length > 0
+  vars:
+    openwrt_config_changed: "{{ openwrt_config_render.results | selectattr('changed') | map(attribute='item') | list }}"
+  tags: [apply]
+  block:
+    - name: Back up current files on the device
+      ansible.builtin.raw: >-
+        cd / && tar -cf /tmp/ansible-backup.tar
+        $(for f in {{ openwrt_config_files | map(attribute='dest') | join(' ') }}; do [ -e "$f" ] && echo "${f#/}"; done)
+      changed_when: false
+
+    - name: Upload changed files to staging area
+      delegate_to: localhost
+      ansible.builtin.shell: >-
+        ssh -o BatchMode=yes {{ ansible_user }}@{{ ansible_host }}
+        'mkdir -p "/tmp/ansible-staged{{ item.dest | dirname }}" && cat > "/tmp/ansible-staged{{ item.dest }}"'
+        < "{{ openwrt_config_build_dir }}/staged{{ item.dest }}"
+      loop: "{{ openwrt_config_changed }}"
+      loop_control:
+        label: "{{ item.dest }}"
+      changed_when: false
+
+    - name: Validate staged UCI files
+      ansible.builtin.raw: >-
+        uci -c /tmp/ansible-staged/etc/config show {{ item.dest | basename }} >/dev/null
+      loop: "{{ openwrt_config_changed | selectattr('uci', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.dest }}"
+      changed_when: false
+
+    - name: Install changed files
+      ansible.builtin.raw: >-
+        cp "/tmp/ansible-staged{{ item.dest }}" "{{ item.dest }}" &&
+        chown root:root "{{ item.dest }}" && chmod {{ item.mode | default('0644') }} "{{ item.dest }}"
+      loop: "{{ openwrt_config_changed }}"
+      loop_control:
+        label: "{{ item.dest }}"
+      changed_when: true
+
+    - name: Reload with rollback
+      ansible.builtin.include_role:
+        name: openwrt_apply
+      vars:
+        openwrt_apply_restart: "{{ openwrt_config_changed | selectattr('restart', 'defined') | map(attribute='restart') | unique | list }}"
+
+    - name: Clean up staging area
+      ansible.builtin.raw: rm -rf /tmp/ansible-staged /tmp/ansible-backup.tar
+      changed_when: false
+
+- name: Services
+  ansible.builtin.include_tasks: services.yml

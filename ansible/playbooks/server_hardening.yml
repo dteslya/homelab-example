@@ -1,0 +1,9 @@
+---
+# Re-runnable. Run after server_bootstrap.yml and before the host's own
+# playbook (headscale.yml or incus.yml).
+#   ansible-playbook playbooks/server_hardening.yml -l <host> -K
+- name: Harden the server
+  hosts: servers
+  become: true
+  roles:
+    - server_hardening

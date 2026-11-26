@@ -1,0 +1,66 @@
+# Nightly consistent copy of the Vikunja SQLite DB into vikunja-backups/ of
+# the documents dataset, so the documents B2 Cloud Sync picks it up. Always
+# the same filename: the B2 bucket keeps prior versions. Runs before the
+# TrueNAS Cloud Sync push at 03:00.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vikunja-backup
+  namespace: documents
+spec:
+  schedule: "45 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # Gives up if Vikunja isn't running, so the pod can't sit Pending forever
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          # Same node as Vikunja: the DB PVC is an RWO iSCSI volume, which
+          # attaches to one node at a time
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: vikunja
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          containers:
+            - name: sqlite-backup
+              image: docker.io/keinos/sqlite3:3.54.1
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  rm -f /backups/vikunja.db.tmp
+                  # .backup takes a consistent copy of the live WAL-mode DB
+                  sqlite3 /db/vikunja.db ".backup /backups/vikunja.db.tmp"
+                  sqlite3 /backups/vikunja.db.tmp "PRAGMA integrity_check;" | grep -qx ok
+                  mv /backups/vikunja.db.tmp /backups/vikunja.db
+              volumeMounts:
+                - name: db
+                  mountPath: /db
+                - name: documents-library
+                  mountPath: /backups
+                  subPath: vikunja-backups
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: db
+              persistentVolumeClaim:
+                claimName: vikunja-db-iscsi
+            - name: documents-library
+              persistentVolumeClaim:
+                claimName: documents-library

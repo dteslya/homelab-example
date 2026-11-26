@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: karakeep
+  namespace: documents
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: karakeep
+  template:
+    metadata:
+      labels:
+        app: karakeep
+    spec:
+      # Everything here uses DNS names, so skip the <SERVICE>_PORT env vars
+      enableServiceLinks: false
+      containers:
+        - name: karakeep
+          # Web UI + background workers (crawler, indexing) in one image
+          image: ghcr.io/karakeep-app/karakeep:0.35.0
+          envFrom:
+            - configMapRef:
+                name: karakeep-env
+            - secretRef:
+                name: karakeep-secrets
+            # Optional so Karakeep starts before the Pocket ID client exists
+            - secretRef:
+                name: karakeep-oidc
+                optional: true
+          ports:
+            - name: webui
+              containerPort: 3000
+          # First start runs DB migrations
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: documents-library
+              mountPath: /assets
+              subPath: karakeep/assets
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: karakeep-data
+        - name: documents-library
+          persistentVolumeClaim:
+            claimName: documents-library

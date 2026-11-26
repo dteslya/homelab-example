@@ -1,0 +1,67 @@
+# Nightly `pocket-id export` (users, passkeys, OIDC clients, uploads) into the
+# backups dataset as pocket-id.zip. Always the same filename: the B2 bucket
+# keeps prior versions. Runs before the TrueNAS Cloud Sync push at 03:00.
+# Encrypted columns stay encrypted, so a restore also needs ENCRYPTION_KEY
+# from pocket-id-secrets (i.e. the sealed-secrets key backup).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pocket-id-backup
+  namespace: pocket-id
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          # Same node as Pocket ID: the PVC is an RWO iSCSI volume, which
+          # attaches to one node at a time
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: pocket-id
+                  topologyKey: kubernetes.io/hostname
+          containers:
+            - name: export
+              # Same image as the server, so the export matches the DB schema
+              image: ghcr.io/pocket-id/pocket-id:v2.19.3
+              workingDir: /app
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  /app/pocket-id export --path /backups/pocket-id.zip.tmp
+                  mv /backups/pocket-id.zip.tmp /backups/pocket-id.zip
+              env:
+                - name: ENCRYPTION_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: pocket-id-secrets
+                      key: ENCRYPTION_KEY
+              volumeMounts:
+                - name: data
+                  mountPath: /app/data
+                - name: backups
+                  mountPath: /backups
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: pocket-id-data-iscsi
+            - name: backups
+              persistentVolumeClaim:
+                claimName: backups

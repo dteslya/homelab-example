@@ -1,0 +1,12 @@
+---
+openwrt_ula_prefix: fda2:95af:8a95::/48
+openwrt_dhcp_default_duid: "0004154ad3eb85b642c49b1155c5adc8197a"
+
+openwrt_bridge_ports: [lan1, lan2, wan]
+openwrt_bridge_ipv6: false
+openwrt_bridge_vlans:
+  - { vid: 15, ports: [lan2:u*, wan:t], ipv6: false }
+  - { vid: 16, ports: [lan1:t, wan:t], ipv6: false }
+openwrt_vlan_interfaces:
+  - { vid: 15, ipaddr: 10.0.15.12, gateway: "{{ openwrt_mgmt_gateway }}", dns: "{{ openwrt_dns_servers }}" }
+  - { vid: 16 }

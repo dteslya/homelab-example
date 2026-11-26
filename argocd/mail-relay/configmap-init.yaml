@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smtp-relay-init
+  namespace: mail
+data:
+  # Run by the image after it configures Postfix (/docker-init.d/*.sh)
+  init-lan-listener.sh: |
+    #!/bin/sh
+    # Second smtpd listener for LAN clients with its own, narrower mynetworks
+    set -e
+    postconf -M "2525/inet=2525 inet n - n - - smtpd"
+    postconf -P "2525/inet/mynetworks=${LAN_ALLOWED_CLIENTS}"

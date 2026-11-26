@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: icloudpd-watchdog
+  namespace: photos
+spec:
+  # Daily at 09:00 UTC+4: one reminder per day while a login is pending
+  schedule: "0 5 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: watchdog
+              image: busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
+              command: ["/bin/sh", "/scripts/watchdog.sh"]
+              env:
+                - name: SMTP_RELAY
+                  value: smtp-relay.mail.svc.cluster.local:25
+                # Each account's notification goes to its Apple ID
+                - name: BOB_EMAIL
+                  valueFrom:
+                    secretKeyRef:
+                      name: icloudpd-secrets
+                      key: bob-username
+                - name: ALICE_EMAIL
+                  valueFrom:
+                    secretKeyRef:
+                      name: icloudpd-secrets
+                      key: alice-username
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  memory: 64Mi
+          volumes:
+            - name: scripts
+              configMap:
+                name: icloudpd-watchdog

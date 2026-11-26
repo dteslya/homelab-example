@@ -1,0 +1,207 @@
+---
+- name: Assert cloudflare_api_token is set
+  ansible.builtin.assert:
+    that:
+      - cloudflare_api_token is defined
+      - cloudflare_api_token != "REPLACE_ME"
+    fail_msg: >-
+      cloudflare_api_token is missing. Add vault_headscale_cf_token with
+      `ansible-vault edit inventory/group_vars/headscale/vault.yml`.
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+    state: present
+
+# -----------------------------------------------------------------
+# Firewall: iptables rules belong to roles/server_hardening
+# -----------------------------------------------------------------
+- name: Assert the firewall opens STUN for the embedded DERP relay
+  ansible.builtin.assert:
+    that:
+      - server_firewall_allow | default([]) | selectattr('port', 'eq', 3478) | selectattr('proto', 'eq', 'udp') | list | length > 0
+    fail_msg: >-
+      headscale_embedded_derp_enabled needs 3478/udp open. Add it to
+      server_firewall_allow in inventory/group_vars/headscale/main.yml and run
+      playbooks/server_hardening.yml.
+  when: headscale_embedded_derp_enabled
+
+# -----------------------------------------------------------------
+# Cloudflare DNS record for the headscale hostname
+# -----------------------------------------------------------------
+- name: Ensure Cloudflare A record exists (DNS-only, not proxied)
+  community.general.cloudflare_dns:
+    zone: "{{ cloudflare_zone }}"
+    record: "{{ headscale_domain }}"
+    type: A
+    value: "{{ headscale_public_ip }}"
+    proxied: false
+    ttl: 300
+    api_token: "{{ cloudflare_api_token }}"
+    state: present
+  delegate_to: localhost
+  become: false
+
+# -----------------------------------------------------------------
+# Headscale install (official .deb package)
+# -----------------------------------------------------------------
+- name: Check installed headscale version
+  ansible.builtin.command: headscale version
+  register: headscale_installed_version
+  changed_when: false
+  check_mode: false   # read-only; later tasks need its output in --check too
+  failed_when: false
+
+- name: Download headscale .deb package
+  ansible.builtin.get_url:
+    url: "https://github.com/juanfont/headscale/releases/download/v{{ headscale_version }}/headscale_{{ headscale_version }}_linux_{{ headscale_arch }}.deb"
+    dest: "/tmp/headscale_{{ headscale_version }}.deb"
+    mode: "0644"
+  when: >
+    headscale_installed_version.stdout is not defined
+    or headscale_version not in headscale_installed_version.stdout
+
+- name: Install headscale .deb package
+  ansible.builtin.apt:
+    deb: "/tmp/headscale_{{ headscale_version }}.deb"
+    state: present
+  when: >
+    headscale_installed_version.stdout is not defined
+    or headscale_version not in headscale_installed_version.stdout
+  notify: Restart headscale
+
+- name: Deploy headscale config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/headscale/config.yaml
+    owner: root
+    group: headscale
+    mode: "0640"
+  notify: Restart headscale
+
+- name: Deploy ACL policy file
+  ansible.builtin.template:
+    src: policy.hujson.j2
+    dest: /etc/headscale/policy.hujson
+    owner: root
+    group: headscale
+    mode: "0640"
+  when: headscale_manage_policy
+  notify: Restart headscale
+
+- name: Enable and start headscale
+  ansible.builtin.systemd:
+    name: headscale
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Flush handlers so headscale is up before we manage users
+  ansible.builtin.meta: flush_handlers
+
+# -----------------------------------------------------------------
+# Caddy (custom build with Cloudflare DNS plugin, no apt package)
+# -----------------------------------------------------------------
+- name: Create caddy group
+  ansible.builtin.group:
+    name: caddy
+    system: true
+
+- name: Create caddy user
+  ansible.builtin.user:
+    name: caddy
+    group: caddy
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/caddy
+    create_home: true
+
+- name: Create /etc/caddy
+  ansible.builtin.file:
+    path: /etc/caddy
+    state: directory
+    owner: root
+    group: caddy
+    mode: "0750"
+
+# Caddy's build server always builds the latest release and cannot
+# pin a version, so the binary is only fetched when missing, or
+# re-fetched (latest) when caddy_upgrade is true. get_url alone can't
+# do this: without a checksum it re-requests the URL even when dest
+# exists (and always reports changed in --check), hence the stat gate.
+- name: Check for caddy binary
+  ansible.builtin.stat:
+    path: /usr/local/bin/caddy
+  register: caddy_binary
+
+- name: Download custom caddy build (with caddy-dns/cloudflare)
+  ansible.builtin.get_url:
+    url: "https://caddyserver.com/api/download?os=linux&arch={{ caddy_arch }}&p=github.com%2Fcaddy-dns%2Fcloudflare&idempotent=true"
+    dest: /usr/local/bin/caddy
+    mode: "0755"
+    owner: root
+    group: root
+    force: true
+  when: not caddy_binary.stat.exists or caddy_upgrade | bool
+  notify: Restart caddy
+
+- name: Allow caddy to bind privileged ports
+  community.general.capabilities:
+    path: /usr/local/bin/caddy
+    capability: cap_net_bind_service=+ep
+    state: present
+
+- name: Deploy Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: caddy
+    mode: "0640"
+  notify: Reload caddy
+
+- name: Deploy caddy env file (holds Cloudflare token)
+  ansible.builtin.template:
+    src: caddy_env.j2
+    dest: /etc/caddy/caddy.env
+    owner: caddy
+    group: caddy
+    mode: "0600"
+  notify: Restart caddy
+
+- name: Deploy caddy systemd unit
+  ansible.builtin.template:
+    src: caddy.service.j2
+    dest: /etc/systemd/system/caddy.service
+    mode: "0644"
+  notify: Restart caddy
+
+- name: Enable and start caddy
+  ansible.builtin.systemd:
+    name: caddy
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Flush handlers so caddy/headscale are settled
+  ansible.builtin.meta: flush_handlers
+
+# -----------------------------------------------------------------
+# Bootstrap a default headscale user (idempotent)
+# -----------------------------------------------------------------
+- name: List existing headscale users
+  ansible.builtin.command: headscale users list --output json
+  register: hs_users
+  changed_when: false
+  check_mode: false   # read-only; later tasks need its output in --check too
+
+- name: Create default headscale user
+  ansible.builtin.command: "headscale users create {{ headscale_default_user }}"
+  when: headscale_default_user not in (hs_users.stdout | from_json | map(attribute='name') | list)

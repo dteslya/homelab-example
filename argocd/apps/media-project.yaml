@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: media
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Media stack - Plex, arr apps, qBittorrent
+
+  sourceRepos:
+    - "git@github.com:your-github-user/homelab.git"
+
+  destinations:
+    - namespace: media
+      server: https://kubernetes.default.svc
+
+  # Deny all cluster-scoped resources by default — media apps have no
+  # legitimate reason to create ClusterRoles, CRDs, StorageClasses, etc.
+  # PersistentVolume is allowed for the static NFS PV backing the books dataset.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: ""
+      kind: PersistentVolume
+
+  # Only allow the namespaced kinds these apps actually need
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: apps
+      kind: Deployment
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+    - group: batch
+      kind: Job
+    - group: batch
+      kind: CronJob
+    - group: bitnami.com
+      kind: SealedSecret
+    - group: gateway.envoyproxy.io
+      kind: SecurityPolicy
+
+  orphanedResources:
+    warn: true

@@ -1,0 +1,43 @@
+# ===================================================
+# Issuer #1: The PRODUCTION Let's Encrypt Issuer
+# ===================================================
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod-cloudflare
+spec:
+  acme:
+    email: "vestals.72-boards@icloud.com"
+    # This is the PRODUCTION ACME server URL
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-prod-private-key # Use a separate key for production
+    solvers:
+      - dns01:
+          cloudflare:
+            email: "vestals.72-boards@icloud.com"
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
+---
+# ===================================================
+# Issuer #2: The STAGING Let's Encrypt Issuer
+# ===================================================
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging-cloudflare
+spec:
+  acme:
+    email: "vestals.72-boards@icloud.com"
+    # This is the STAGING ACME server URL
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-staging-private-key # Use a separate key for staging
+    solvers:
+      - dns01:
+          cloudflare:
+            email: "vestals.72-boards@icloud.com"
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token

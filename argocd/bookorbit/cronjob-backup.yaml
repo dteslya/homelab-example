@@ -1,0 +1,54 @@
+# Nightly pg_dump of the BookOrbit DB into the backups/ folder of the books
+# dataset. Always the same filename: the B2 bucket keeps prior versions, and
+# Cloud Sync in COPY mode would never delete dated dumps. Runs before the
+# TrueNAS Cloud Sync push at 03:00.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bookorbit-backup
+  namespace: media
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          containers:
+            - name: pg-dump
+              # Same image as bookorbit-postgres, so pg_dump matches the server version
+              image: pgvector/pgvector:pg18@sha256:38681dc6eaf55308e2a4c6de392d131652dcfac70e1263e35cd9b5ea3fe39782
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  pg_dump -h bookorbit-postgres -U bookorbit -d bookorbit -Fc -f /backups/bookorbit.dump.tmp
+                  mv /backups/bookorbit.dump.tmp /backups/bookorbit.dump
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: bookorbit-secrets
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: books-library
+                  mountPath: /backups
+                  subPath: backups
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+          volumes:
+            - name: books-library
+              persistentVolumeClaim:
+                claimName: books-library

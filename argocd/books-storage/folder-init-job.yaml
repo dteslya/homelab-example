@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: books-folder-init
+  namespace: media
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: init-folders
+          image: busybox@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /data/library /data/ingest /data/backups
+              chown 1000:1000 /data/library /data/ingest /data/backups
+          volumeMounts:
+            - name: books-library
+              mountPath: /data
+      volumes:
+        - name: books-library
+          persistentVolumeClaim:
+            claimName: books-library

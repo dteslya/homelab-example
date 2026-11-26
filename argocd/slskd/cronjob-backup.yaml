@@ -1,0 +1,63 @@
+# Nightly copy of slskd.yml (slskd.tar.gz), which is edited in the web UI
+# (SLSKD_REMOTE_CONFIGURATION). Transfer/search history in data/ is left out.
+# Writes the backups dataset (see README), always under the same filename:
+# the B2 bucket keeps prior versions. Runs before the TrueNAS Cloud Sync push
+# at 03:00.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: slskd-backup
+  namespace: media
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          # Same node as slskd: the PVC is an RWO iSCSI volume, which
+          # attaches to one node at a time
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: slskd
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          containers:
+            - name: backup
+              image: busybox:1.38@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  tar czf /backups/slskd.tar.gz.tmp -C /app slskd.yml
+                  mv /backups/slskd.tar.gz.tmp /backups/slskd.tar.gz
+              volumeMounts:
+                - name: app
+                  mountPath: /app
+                - name: backups
+                  mountPath: /backups
+                  subPath: slskd
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  memory: 64Mi
+          volumes:
+            - name: app
+              persistentVolumeClaim:
+                claimName: slskd-app-iscsi
+            - name: backups
+              persistentVolumeClaim:
+                claimName: backups

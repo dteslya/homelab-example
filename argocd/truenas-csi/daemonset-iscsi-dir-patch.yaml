@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: truenas-csi-node
+  namespace: truenas-csi
+spec:
+  template:
+    spec:
+      volumes:
+        - name: iscsi-dir
+          hostPath:
+            path: /var/lib/truenas-csi-iscsi-unused
+            type: DirectoryOrCreate

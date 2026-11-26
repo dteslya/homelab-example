@@ -1,0 +1,8 @@
+---
+- name: Restart node exporter
+  ansible.builtin.systemd:
+    name: prometheus-node-exporter
+    state: restarted
+    daemon_reload: true
+  # The package is only simulated in check mode, so the unit doesn't exist yet.
+  ignore_errors: "{{ ansible_check_mode }}"

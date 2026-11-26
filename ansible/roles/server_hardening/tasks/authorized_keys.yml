@@ -1,0 +1,18 @@
+---
+# Shared by server_bootstrap and server_hardening. Exclusive: keys not in
+# admin_ssh_authorized_keys are removed.
+- name: Create admin ~/.ssh
+  ansible.builtin.file:
+    path: "/home/{{ server_admin_user }}/.ssh"
+    state: directory
+    owner: "{{ server_admin_user }}"
+    group: "{{ server_admin_user }}"
+    mode: "0700"
+
+- name: Deploy admin authorized_keys
+  ansible.builtin.copy:
+    content: "{{ admin_ssh_authorized_keys | join('\n') }}\n"
+    dest: "/home/{{ server_admin_user }}/.ssh/authorized_keys"
+    owner: "{{ server_admin_user }}"
+    group: "{{ server_admin_user }}"
+    mode: "0600"

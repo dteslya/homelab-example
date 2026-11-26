@@ -1,0 +1,14 @@
+{% from '_uci.j2' import section %}
+{{ section('dnsmasq', none, openwrt_dnsmasq) -}}
+{# Gateway-style 'lan' pool kept but ignored: br-lan carries no address on any device. #}
+{{ section('dhcp', 'lan', {'interface': 'lan', 'start': 100, 'limit': 150, 'leasetime': '12h', 'dhcpv4': 'server',
+    'ra_flags': ['managed-config', 'other-config'], 'ignore': true}) -}}
+{{ section('odhcpd', 'odhcpd', {'maindhcp': false, 'leasefile': '/tmp/odhcpd.leases', 'leasetrigger': '/usr/sbin/odhcpd-update', 'loglevel': 4,
+    'piodir': '/tmp/odhcpd-piodir', 'hostsdir': '/tmp/hosts'}) -}}
+{% for p in openwrt_dhcp_pools %}
+{{ section('dhcp', p.interface, p) -}}
+{% endfor %}
+{% for h in openwrt_dns_hosts %}
+{{ section('domain', none, {'name': hostvars[h].openwrt_fqdn, 'ip': hostvars[h].openwrt_mgmt_ip}) -}}
+{% endfor %}
+{{ "\n" }}

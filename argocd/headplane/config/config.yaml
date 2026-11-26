@@ -1,0 +1,33 @@
+# Headplane config (https://github.com/tale/headplane/blob/v0.8.2/config.example.yaml).
+# Secrets are read from the headplane-secrets files mounted at /etc/headplane/secrets.
+server:
+  host: "0.0.0.0"
+  port: 3000
+  # Public URL without /admin; the OIDC callback is <base_url>/admin/oidc/callback
+  base_url: "https://headplane.lab.example.com"
+  cookie_secret_path: "/etc/headplane/secrets/COOKIE_SECRET"
+  # TLS terminates at Envoy Gateway
+  cookie_secure: true
+  data_path: "/var/lib/headplane"
+
+# API-only ("limited") mode: no config_path and no integration section (an
+# integration block fails validation even when disabled if its fields are
+# missing). headscale's config.yaml is owned by Ansible (roles/headscale), so
+# Headplane must not edit it or restart headscale; it manages nodes, users,
+# routes and keys via the API.
+headscale:
+  url: "https://vpn.example.com"
+  api_key_path: "/etc/headplane/secrets/HEADSCALE_API_KEY"
+
+# Pocket ID SSO (headplane client, admins only). The first user to log in
+# becomes the Headplane owner; Pocket ID only lets admins through, so later
+# users get the admin role too.
+oidc:
+  issuer: "https://id.lab.example.com"
+  client_id: "40e94130-36b4-472c-ab14-35cea633ac26"
+  client_secret_path: "/etc/headplane/secrets/OIDC_CLIENT_SECRET"
+  token_endpoint_auth_method: "client_secret_post"
+  use_pkce: true
+  scope: "openid email profile"
+  profile_picture_source: "oidc"
+  default_role: "admin"

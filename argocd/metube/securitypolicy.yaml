@@ -1,0 +1,21 @@
+# Pocket ID login in front of MeTube, which has no auth of its own. Uses the
+# gateway-users client, which admits every Pocket ID user (admins and family).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: oidc-users
+  namespace: media
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: metube
+  oidc:
+    provider:
+      issuer: https://id.lab.example.com
+    clientID: d01bdb6b-d4d0-42ec-9a04-07cce9163ffc
+    clientSecret:
+      name: gateway-oidc-users
+    scopes: ["openid", "email", "profile"]
+    refreshToken: true
+    logoutPath: /oauth2/logout

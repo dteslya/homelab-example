@@ -1,0 +1,10 @@
+{% from '_uci.j2' import section %}
+{{ section('uhttpd', 'main', {
+    'listen_http': [openwrt_mgmt_ip ~ ':80'], 'listen_https': [openwrt_mgmt_ip ~ ':443'],
+    'redirect_https': openwrt_uhttpd_redirect_https, 'home': '/www', 'rfc1918_filter': true,
+    'max_requests': 3, 'max_connections': 100, 'cert': '/etc/uhttpd.crt', 'key': '/etc/uhttpd.key',
+    'cgi_prefix': '/cgi-bin', 'lua_prefix': ['/cgi-bin/luci=/usr/lib/lua/luci/sgi/uhttpd.lua'],
+    'script_timeout': 60, 'network_timeout': 30, 'http_keepalive': 20, 'tcp_keepalive': true, 'ubus_prefix': '/ubus'}) -}}
+{{ section('cert', 'defaults', {'days': openwrt_uhttpd_cert_days, 'key_type': 'ec', 'bits': 2048, 'ec_curve': 'P-256',
+    'country': 'ZZ', 'state': 'Somewhere', 'location': 'Unknown', 'commonname': 'OpenWrt'}) -}}
+{{ "\n" }}

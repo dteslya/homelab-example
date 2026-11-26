@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bookorbit
+  namespace: media
+spec:
+  selector:
+    app: bookorbit
+  ports:
+    - name: webui
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bookorbit-postgres
+  namespace: media
+spec:
+  selector:
+    app: bookorbit-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

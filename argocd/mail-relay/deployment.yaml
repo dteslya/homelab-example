@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smtp-relay
+  namespace: mail
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: smtp-relay
+  template:
+    metadata:
+      labels:
+        app: smtp-relay
+    spec:
+      containers:
+        - name: postfix
+          # https://github.com/bokysan/docker-postfix/releases
+          image: docker.io/boky/postfix:5.2.1-alpine
+          env:
+            # Relay everything through iCloud Mail (STARTTLS on 587)
+            - name: RELAYHOST
+              value: "[smtp.mail.me.com]:587"
+            - name: POSTFIX_smtp_tls_security_level
+              value: encrypt
+            - name: RELAYHOST_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: smtp-relay-credentials
+                  key: RELAYHOST_USERNAME
+            - name: RELAYHOST_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: smtp-relay-credentials
+                  key: RELAYHOST_PASSWORD
+            # iCloud rejects any sender that isn't the account or one of its aliases,
+            # so rewrite every envelope + header sender to the iCloud address. This lets
+            # clients use whatever From they like.
+            - name: POSTFIX_sender_canonical_maps
+              value: "static:$(RELAYHOST_USERNAME)"
+            # Postfix only rewrites *headers* (From:, missing Message-ID) for local
+            # clients by default; without this iCloud rejects with "From address is
+            # not one of your addresses" even though the envelope was rewritten.
+            - name: POSTFIX_local_header_rewrite_clients
+              value: permit_mynetworks
+            - name: ALLOW_EMPTY_SENDER_DOMAINS
+              value: "true"
+            # Port 587 (in-cluster Service only): any pod may relay.
+            - name: POSTFIX_mynetworks
+              value: "127.0.0.0/8, 10.244.0.0/16"
+            # Port 2525 (smtp-relay-lan only): just these LAN hosts may relay, see
+            # init-lan-listener.sh. It must not trust the pod CIDR, because tailnet
+            # clients arrive via the Tailscale subnet router SNATed to its pod IP.
+            - name: LAN_ALLOWED_CLIENTS
+              value: "10.0.14.10/32" # TrueNAS
+            - name: POSTFIX_myhostname
+              value: smtp-relay.lab.example.com
+            - name: POSTFIX_message_size_limit
+              value: "20971520" # iCloud Mail limit is 20 MB
+          ports:
+            - name: smtp
+              containerPort: 587
+            - name: smtp-lan
+              containerPort: 2525
+          readinessProbe:
+            tcpSocket:
+              port: 587
+            periodSeconds: 10
+          volumeMounts:
+            - name: spool
+              mountPath: /var/spool/postfix
+            - name: init
+              mountPath: /docker-init.d
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        # Queued mail is transient; losing it on restart is acceptable
+        - name: spool
+          emptyDir: {}
+        - name: init
+          configMap:
+            name: smtp-relay-init

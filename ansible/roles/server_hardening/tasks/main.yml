@@ -1,0 +1,161 @@
+---
+# -----------------------------------------------------------------
+# Lockout guards: this role turns off root and password logins, so
+# make sure we're connected as the key-based admin user first.
+# -----------------------------------------------------------------
+- name: Assert we connect as the admin user with keys
+  ansible.builtin.assert:
+    that:
+      - ansible_user != "root"
+      - ansible_user == server_admin_user
+      - admin_ssh_authorized_keys | length > 0
+    fail_msg: >-
+      Connect as server_admin_user ({{ server_admin_user }}) with a key in
+      admin_ssh_authorized_keys. On a fresh host run playbooks/server_bootstrap.yml first.
+
+- name: Deploy admin authorized_keys
+  ansible.builtin.include_tasks: authorized_keys.yml
+
+# -----------------------------------------------------------------
+# SSH
+# -----------------------------------------------------------------
+- name: Deploy sshd hardening drop-in
+  ansible.builtin.template:
+    src: sshd_hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload ssh
+
+# Console logins still work through the admin user and its sudo password.
+- name: Lock root password
+  ansible.builtin.user:
+    name: root
+    password_lock: true
+
+# -----------------------------------------------------------------
+# Firewall (iptables, persisted by netfilter-persistent)
+# -----------------------------------------------------------------
+- name: Check for ufw
+  ansible.builtin.stat:
+    path: /usr/sbin/ufw
+  register: server_hardening_ufw
+
+# Our established SSH session survives: ufw disable leaves the policies at ACCEPT.
+- name: Disable ufw
+  ansible.builtin.command: ufw disable
+  when: server_hardening_ufw.stat.exists
+  changed_when: true
+
+- name: Purge ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: absent
+    purge: true
+
+- name: Install iptables
+  ansible.builtin.apt:
+    name:
+      - iptables
+      - iptables-persistent
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Deploy IPv4 rules
+  ansible.builtin.template:
+    src: rules.v4.j2
+    dest: /etc/iptables/rules.v4
+    owner: root
+    group: root
+    mode: "0640"
+    validate: iptables-restore --test %s
+  notify: Reload iptables
+
+- name: Deploy IPv6 rules
+  ansible.builtin.template:
+    src: rules.v6.j2
+    dest: /etc/iptables/rules.v6
+    owner: root
+    group: root
+    mode: "0640"
+    validate: ip6tables-restore --test %s
+  notify: Reload iptables
+
+- name: Enable netfilter-persistent
+  ansible.builtin.systemd:
+    name: netfilter-persistent
+    enabled: true
+  # Installed by the task above, which check mode only simulates.
+  ignore_errors: "{{ ansible_check_mode }}"
+
+# Load the rules now rather than at the end of the play, so the host
+# isn't left open if a later task fails.
+- name: Apply firewall and sshd changes
+  ansible.builtin.meta: flush_handlers
+
+# -----------------------------------------------------------------
+# Kernel
+# -----------------------------------------------------------------
+- name: Deploy sysctl hardening
+  ansible.builtin.template:
+    src: sysctl.conf.j2
+    dest: /etc/sysctl.d/90-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply sysctl
+
+# -----------------------------------------------------------------
+# Misc
+# -----------------------------------------------------------------
+- name: Create journald drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Cap journald disk usage
+  ansible.builtin.copy:
+    content: |
+      [Journal]
+      SystemMaxUse={{ server_journald_max_use }}
+    dest: /etc/systemd/journald.conf.d/size.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald
+
+- name: Enable time sync
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    enabled: true
+    state: started
+
+- name: Gather service facts
+  ansible.builtin.service_facts:
+  when: server_disabled_services | length > 0
+
+- name: Stop and disable unused services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ server_disabled_services }}"
+  when: (item ~ '.service') in ansible_facts.services
+
+- name: Purge unused packages
+  ansible.builtin.apt:
+    name: "{{ server_purge_packages }}"
+    state: absent
+    purge: true
+  when: server_purge_packages | length > 0
+
+- name: Remove leftover files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ server_purge_files }}"

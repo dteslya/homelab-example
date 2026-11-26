@@ -1,0 +1,62 @@
+---
+- name: Back up OpenWrt configuration
+  hosts: openwrt
+  gather_facts: false
+  tasks:
+    - name: Ensure local backup directory exists
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../backups"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Create sysupgrade backup archive
+      ansible.builtin.raw: sysupgrade -b /tmp/backup-{{ inventory_hostname }}.tar.gz
+      changed_when: false
+
+    # fetch needs Python on the target; scp -O works with stock dropbear (no sftp-server).
+    - name: Fetch backup archive
+      ansible.builtin.command: >-
+        scp -O {{ ansible_user }}@{{ ansible_host }}:/tmp/backup-{{ inventory_hostname }}.tar.gz
+        {{ playbook_dir }}/../backups/{{ inventory_hostname }}-{{ now(fmt='%Y%m%d-%H%M%S') }}.tar.gz
+      delegate_to: localhost
+      changed_when: true
+
+    - name: Remove remote archive
+      ansible.builtin.raw: rm -f /tmp/backup-{{ inventory_hostname }}.tar.gz
+      changed_when: false
+
+# Instant On switches have no CLI: instanton_config (playbooks/library/) logs in to the web UI.
+- name: Back up Instant On switch configuration
+  hosts: switches
+  gather_facts: false
+  tasks:
+    # Pinned once so both files share a timestamp.
+    - name: Set backup file prefix
+      ansible.builtin.set_fact:
+        backup_prefix: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}-{{ now(fmt='%Y%m%d-%H%M%S') }}"
+
+    - name: Download running and startup config
+      instanton_config:
+        host: "{{ ansible_host }}"
+        username: "{{ instanton_user }}"
+        password: "{{ instanton_password }}"
+      register: instanton
+
+    - name: Save configs
+      ansible.builtin.copy:
+        content: "{{ item.content }}"
+        dest: "{{ backup_prefix }}.{{ item.name }}.cfg"
+        mode: "0600"
+      loop:
+        - { name: running, content: "{{ instanton.running_config }}" }
+        - { name: startup, content: "{{ instanton.startup_config }}" }
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Check running config is saved
+      ansible.builtin.assert:
+        that: instanton.in_sync
+        fail_msg: running-config differs from startup-config; save it in the web UI (backups were still written)
+        quiet: true

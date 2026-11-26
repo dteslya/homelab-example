@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://raw.githubusercontent.com/truenas/truenas-csi/v1.4.0/deploy/truenas-csi-driver.yaml
+  - storageclass-nfs.yaml
+  - storageclass-nfs-config.yaml
+  - storageclass-iscsi-config.yaml
+  - secret.yaml
+# Upstream ships the driver as :latest with IfNotPresent, so nodes keep
+# whatever they cached first. Pin it to the manifest's release instead.
+images:
+  - name: ghcr.io/truenas/truenas-csi
+    newTag: v1.4.0
+patches:
+  - path: configmap-patch.yaml
+  - path: delete-placeholder-secret.yaml
+  - path: namespace-psa-patch.yaml
+    target:
+      kind: Namespace
+      name: truenas-csi
+  # Upstream mounts /etc/iscsi as type Directory, but Talos runs the kubelet
+  # in its own container, where /etc/iscsi doesn't exist. iSCSI doesn't need
+  # the mount: the node plugin's shim runs the host's iscsiadm in PID 1's
+  # mount namespace, which has the real /etc/iscsi.
+  - path: daemonset-iscsi-dir-patch.yaml
+    target:
+      kind: DaemonSet
+      name: truenas-csi-node

@@ -1,0 +1,66 @@
+# Nightly copy of SABnzbd's sabnzbd.ini (sabnzbd.tar.gz). Download history
+# (admin/) is left out.
+# Writes the backups dataset (see README), always under the same filename:
+# the B2 bucket keeps prior versions. Runs before the TrueNAS Cloud Sync push
+# at 03:00.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sabnzbd-backup
+  namespace: media
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # Gives up if SABnzbd isn't running, so the pod can't sit Pending forever
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          # Same node as SABnzbd: the config PVC is an RWO iSCSI volume, which
+          # attaches to one node at a time
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: sabnzbd
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          containers:
+            - name: backup
+              image: keinos/sqlite3:3.54.1
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  mkdir -p /tmp/out
+                  cp /config/sabnzbd.ini /tmp/out/
+                  tar czf /backups/sabnzbd.tar.gz.tmp -C /tmp/out .
+                  mv /backups/sabnzbd.tar.gz.tmp /backups/sabnzbd.tar.gz
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                - name: backups
+                  mountPath: /backups
+                  subPath: sabnzbd
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: config
+              persistentVolumeClaim:
+                claimName: sabnzbd-config-iscsi
+            - name: backups
+              persistentVolumeClaim:
+                claimName: backups

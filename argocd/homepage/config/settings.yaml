@@ -1,0 +1,28 @@
+title: Homelab
+theme: dark
+color: slate
+layout:
+  Media:
+    style: row
+    columns: 4
+  Photos:
+    style: row
+    columns: 3
+  Documents:
+    style: row
+    columns: 3
+  Personal:
+    style: row
+    columns: 2
+  Requests:
+    style: row
+    columns: 3
+  Calendar:
+    style: row
+    columns: 1
+  Downloads:
+    style: row
+    columns: 3
+  Infrastructure:
+    style: row
+    columns: 4

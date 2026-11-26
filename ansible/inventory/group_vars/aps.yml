@@ -1,0 +1,29 @@
+---
+# Dumb APs (Xiaomi Mi Router 4A Gigabit): bridge VLANs to Wi-Fi, mgmt address on VLAN 15, no routing.
+openwrt_firewall_lan_networks: [lan, vlan15, vlan16]
+# Dumb APs only bridge: no DHCP/DNS/RA service, no routing, so no firewall either.
+# Their only address is on mgmt VLAN 15, where SSH/LuCI/metrics are reached through the gateway.
+openwrt_services_disabled: [dnsmasq, odhcpd, firewall]
+
+openwrt_radios:
+  - name: radio0
+    path: 1e140000.pcie/pci0000:00/0000:00:01.0/0000:02:00.0
+    band: 2g
+    channel: 11
+    htmode: HT20
+    disabled: true
+    ifaces:
+      - { ssid: OpenWrt, encryption: none, network: lan, disabled: true }
+  - name: radio1
+    path: 1e140000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0
+    band: 5g
+    channel: 52   # gateway uses 36; 52-64 is the only other 80 MHz block in GE (DFS: ~1 min radar check at start)
+    htmode: VHT80
+    cell_density: 3
+    ifaces:
+      - { roaming: true, network: vlan16 }
+
+openwrt_rc_local:
+  - "# Disable status LED"
+  - echo none > /sys/devices/platform/leds/leds/blue:status/trigger
+  - echo 0 > /sys/devices/platform/leds/leds/blue:status/brightness

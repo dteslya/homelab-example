@@ -1,0 +1,13 @@
+# local-path, NOT NFS: Gatus keeps its history in SQLite, which doesn't
+# cope with NFS locking (same reasoning as slskd and Pocket ID).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gatus-data
+  namespace: monitoring
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi

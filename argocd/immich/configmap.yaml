@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: immich-env
+  namespace: photos
+data:
+  TZ: "Etc/UTC"
+  DB_HOSTNAME: immich-postgres
+  DB_USERNAME: postgres
+  DB_DATABASE_NAME: immich
+  REDIS_HOSTNAME: immich-valkey
+  # Postgres lives on NFS (HDD pool), tune for sequential IO
+  DB_STORAGE_TYPE: HDD

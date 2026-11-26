@@ -1,0 +1,20 @@
+# Static NFS PV for the sealed-secrets/ folder of the manually created wd_green_pool/backups
+# dataset (see README); TrueNAS Cloud Sync pushes the dataset to B2.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: backups-sealed-secrets
+spec:
+  capacity:
+    storage: 1Gi # cosmetic on NFS, quota is enforced pool-side
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - hard
+    - nfsvers=4.1
+    - noatime
+  nfs:
+    server: 10.0.14.10
+    path: /mnt/wd_green_pool/backups/sealed-secrets

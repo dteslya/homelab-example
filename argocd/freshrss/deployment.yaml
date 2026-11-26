@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freshrss
+  namespace: documents
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: freshrss
+  template:
+    metadata:
+      labels:
+        app: freshrss
+    spec:
+      # Everything here uses DNS names, so skip the <SERVICE>_PORT env vars
+      enableServiceLinks: false
+      containers:
+        - name: freshrss
+          # Debian image: OIDC (mod_auth_openidc) isn't in the Alpine one.
+          # Runs as root: the entrypoint starts cron and Apache, which drops
+          # to www-data.
+          image: docker.io/freshrss/freshrss:1.31.0
+          envFrom:
+            - configMapRef:
+                name: freshrss-env
+            # Required: without it Apache refuses to start with OIDC_ENABLED,
+            # so the install wizard is never reachable without a login
+            - secretRef:
+                name: freshrss-oidc
+          ports:
+            - name: http
+              containerPort: 80
+          # /api/ isn't behind OIDC and is what cli/health.php checks
+          startupProbe:
+            httpGet:
+              path: /api/
+              port: 80
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/
+              port: 80
+            periodSeconds: 30
+          volumeMounts:
+            - name: data
+              mountPath: /var/www/FreshRSS/data
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: freshrss-data-iscsi

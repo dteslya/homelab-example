@@ -1,0 +1,16 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: beets
+  namespace: media
+spec:
+  parentRefs:
+    - name: lab-gateway
+      namespace: envoy-gateway-system
+      sectionName: https
+  hostnames:
+    - "beets.lab.example.com"
+  rules:
+    - backendRefs:
+        - name: beets
+          port: 8337

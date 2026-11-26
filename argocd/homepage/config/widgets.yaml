@@ -1,0 +1,11 @@
+- search:
+    provider: custom
+    url: https://kagi.com/search?q=
+    target: _blank
+    suggestionUrl: https://kagi.com/api/autosuggest?q=
+    showSearchSuggestions: true
+
+- resources:
+    label: Cluster
+    cpu: true
+    memory: true

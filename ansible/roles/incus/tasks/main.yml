@@ -1,0 +1,62 @@
+---
+- name: Assert network settings are set
+  ansible.builtin.assert:
+    that:
+      - incus_mgmt_address | length > 0
+      - incus_mgmt_gateway | length > 0
+      - incus_dns_servers | length > 0
+    fail_msg: Set incus_mgmt_address, incus_mgmt_gateway and incus_dns_servers in group_vars/incus/main.yml.
+
+- name: Configure network
+  ansible.builtin.include_tasks: network.yml
+
+# -----------------------------------------------------------------
+# Incus
+# -----------------------------------------------------------------
+# deb822_repository needs it on the host.
+- name: Install python3-debian
+  ansible.builtin.apt:
+    name: python3-debian
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Add Zabbly incus repository
+  ansible.builtin.deb822_repository:
+    name: zabbly-incus-stable
+    uris: "{{ incus_apt_uri }}"
+    suites: "{{ ansible_facts.distribution_release }}"
+    components: main
+    architectures: amd64
+    signed_by: "{{ incus_apt_key_url }}"
+  register: incus_repo
+
+- name: Install incus
+  ansible.builtin.apt:
+    name: "{{ incus_packages }}"
+    state: present
+    update_cache: "{{ incus_repo is changed }}"
+
+# Lets the admin user run `incus` locally without sudo.
+- name: Add admin user to incus-admin
+  ansible.builtin.user:
+    name: "{{ server_admin_user }}"
+    groups: incus-admin
+    append: true
+
+- name: Create /etc/incus
+  ansible.builtin.file:
+    path: /etc/incus
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy incus preseed
+  ansible.builtin.template:
+    src: preseed.yaml.j2
+    dest: /etc/incus/preseed.yaml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply incus preseed

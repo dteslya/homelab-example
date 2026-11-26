@@ -1,0 +1,16 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: lab-gateway-backend
+  namespace: envoy-gateway-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: lab-gateway
+  timeout:
+    http:
+      requestTimeout: 0s
+      streamIdleTimeout: 1h
+  connection:
+    bufferLimit: 1Mi

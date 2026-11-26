@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: icloudpd-bob
+  namespace: photos
+spec:
+  selector:
+    app: icloudpd-bob
+  ports:
+    - name: webui
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: icloudpd-alice
+  namespace: photos
+spec:
+  selector:
+    app: icloudpd-alice
+  ports:
+    - name: webui
+      port: 8080
+      targetPort: 8080

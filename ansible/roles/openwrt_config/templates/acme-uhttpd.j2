@@ -1,0 +1,12 @@
+# Sourced by hotplug-call (ACTION=issued|renewed) after acme.sh gets a certificate.
+# uhttpd keeps reading /etc/uhttpd.{crt,key}, so it falls back to its self-signed cert until the first issuance.
+case "$ACTION" in
+issued|renewed)
+	if [ -s /etc/ssl/acme/{{ openwrt_fqdn }}.fullchain.crt ] && [ -s /etc/ssl/acme/{{ openwrt_fqdn }}.key ]; then
+		cp /etc/ssl/acme/{{ openwrt_fqdn }}.fullchain.crt /etc/uhttpd.crt
+		(umask 077; cp /etc/ssl/acme/{{ openwrt_fqdn }}.key /etc/uhttpd.key)
+		logger -t acme "installed {{ openwrt_fqdn }} certificate for uhttpd"
+		/etc/init.d/uhttpd restart
+	fi
+	;;
+esac

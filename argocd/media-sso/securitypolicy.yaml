@@ -1,0 +1,44 @@
+# Pocket ID login in front of the media admin UIs that have no OIDC of their
+# own. The gateway-admin client only admits the Pocket ID admins group.
+# redirectURL is left unset so Envoy uses <scheme>://<host>/oauth2/callback
+# for whichever host the request came in on.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: oidc-admin
+  namespace: media
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: sonarr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: radarr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: prowlarr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: bazarr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: qbittorrent
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: sabnzbd
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: slskd
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: beets
+  oidc:
+    provider:
+      issuer: https://id.lab.example.com
+    clientID: 7a904906-0224-4719-8d5b-e6a6bdf9b5b7
+    clientSecret:
+      name: gateway-oidc-admin
+    scopes: ["openid", "email", "profile"]
+    refreshToken: true
+    logoutPath: /oauth2/logout

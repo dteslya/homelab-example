@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: recyclarr
+  namespace: media
+spec:
+  schedule: "0 5 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: recyclarr
+              image: ghcr.io/recyclarr/recyclarr:8
+              command: ["recyclarr", "sync"]
+              args: ["--log", "info"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              envFrom:
+                - secretRef:
+                    name: recyclarr-secrets
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                - name: recyclarr-configs
+                  mountPath: /config/configs
+                  readOnly: true
+          volumes:
+            - name: config
+              emptyDir: {}
+            - name: recyclarr-configs
+              configMap:
+                name: recyclarr-config

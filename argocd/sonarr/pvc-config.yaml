@@ -1,0 +1,13 @@
+# Block storage (ext4 on iSCSI), so SQLite WAL and locking work normally.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sonarr-config-iscsi
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: truenas-iscsi-config
+  resources:
+    requests:
+      storage: 1Gi

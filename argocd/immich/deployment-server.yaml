@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-server
+  namespace: photos
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: immich-server
+  template:
+    metadata:
+      labels:
+        app: immich-server
+    spec:
+      containers:
+        - name: immich-server
+          # https://github.com/immich-app/immich/releases — keep in lockstep with immich-machine-learning
+          image: ghcr.io/immich-app/immich-server:v3.4.2
+          envFrom:
+            - configMapRef:
+                name: immich-env
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: immich-secrets
+                  key: DB_PASSWORD
+          ports:
+            - name: http
+              containerPort: 2283
+          readinessProbe:
+            httpGet:
+              path: /api/server/ping
+              port: 2283
+            periodSeconds: 10
+          volumeMounts:
+            # Immich-managed data: thumbs, encoded-video, backups (nightly DB dumps)
+            - name: photos-library
+              mountPath: /data
+              subPath: immich
+            # iCloud originals written by icloudpd, added as read-only External Libraries
+            - name: photos-library
+              mountPath: /external/bob
+              subPath: icloud/bob
+              readOnly: true
+            - name: photos-library
+              mountPath: /external/alice
+              subPath: icloud/alice
+              readOnly: true
+          # The microservices worker (metadata extraction, thumbnails) runs in this
+          # container too and peaks well above 2Gi while working through a large library
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              memory: 4Gi
+      volumes:
+        - name: photos-library
+          persistentVolumeClaim:
+            claimName: photos-library

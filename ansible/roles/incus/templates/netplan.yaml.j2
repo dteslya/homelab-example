@@ -1,0 +1,39 @@
+# {{ ansible_managed }}
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    {{ incus_uplink }}:
+      dhcp4: false
+      dhcp6: false
+{% if incus_vlans %}
+  vlans:
+{% for id in incus_vlans %}
+    {{ incus_uplink }}.{{ id }}:
+      id: {{ id }}
+      link: {{ incus_uplink }}
+{% endfor %}
+{% endif %}
+  bridges:
+    {{ incus_mgmt_bridge }}:
+      interfaces: [{{ incus_uplink }}]
+      dhcp4: false
+      dhcp6: false
+      addresses: [{{ incus_mgmt_address }}]
+      routes:
+        - to: default
+          via: {{ incus_mgmt_gateway }}
+      nameservers:
+        addresses: [{{ incus_dns_servers | join(', ') }}]
+      parameters:
+        stp: false
+        forward-delay: 0
+{% for id in incus_vlans %}
+    br-vlan{{ id }}:
+      interfaces: [{{ incus_uplink }}.{{ id }}]
+      dhcp4: false
+      dhcp6: false
+      parameters:
+        stp: false
+        forward-delay: 0
+{% endfor %}

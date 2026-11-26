@@ -1,0 +1,21 @@
+---
+- name: Check services that should be disabled
+  ansible.builtin.raw: |
+    {% for s in openwrt_services_disabled %}
+    [ -x /etc/init.d/{{ s }} ] && { /etc/init.d/{{ s }} enabled || /etc/init.d/{{ s }} running; } && echo {{ s }}
+    {% endfor %}
+    true
+  register: openwrt_services_check
+  check_mode: false
+  changed_when: openwrt_services_check.stdout_lines | length > 0
+
+- name: Stop and disable services
+  when:
+    - not ansible_check_mode
+    - openwrt_services_check.stdout_lines | length > 0
+  tags: [apply]
+  ansible.builtin.raw: |
+    {% for s in openwrt_services_check.stdout_lines %}
+    /etc/init.d/{{ s }} stop; /etc/init.d/{{ s }} disable
+    {% endfor %}
+  changed_when: true

@@ -1,0 +1,47 @@
+# =============================================================
+# Minimal cluster – 1 control plane + 2 workers
+# Copy this file to terraform.tfvars and fill in your values.
+# =============================================================
+
+cluster_name        = "talos-k8s"
+cluster_endpoint_ip = "192.168.1.100"
+kubernetes_version  = "1.36.0"
+talos_version       = "v1.14.6"
+
+# --- Talos image ---------------------------------------------
+# From ./scripts/import-talos-image.sh: the alias it prints and the
+# "Schematic ID" it logs (this one is the default, siderolabs/iscsi-tools).
+talos_image_alias  = "talos-c9078f941996-v1.14.5"
+talos_schematic_id = "c9078f9419961640c712a8bf2bb9174933dfcf1da383fd8ea2b7dc21493f8bac"
+
+# --- Incus ---------------------------------------------------
+incus_remote       = "https://192.168.1.10:8443"
+incus_project      = "default"
+incus_storage_pool = "default"
+
+# --- Topology ------------------------------------------------
+control_plane_count = 1
+worker_count        = 2
+
+# --- Control-plane node resources ----------------------------
+control_plane_cpu       = 2
+control_plane_memory_mb = 2048
+control_plane_disk_gb   = 20
+
+# --- Worker node resources -----------------------------------
+worker_cpu       = 2
+worker_memory_mb = 4096
+worker_disk_gb   = 40
+
+# --- Networking (static IPs) ---------------------------------
+gateway     = "192.168.1.1"
+dns_servers = ["192.168.1.1", "1.1.1.1"]
+
+control_plane_ip_addresses = [
+  "192.168.1.100/24",
+]
+
+worker_ip_addresses = [
+  "192.168.1.101/24",
+  "192.168.1.102/24",
+]

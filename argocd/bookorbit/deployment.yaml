@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bookorbit
+  namespace: media
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: bookorbit
+  template:
+    metadata:
+      labels:
+        app: bookorbit
+    spec:
+      containers:
+        - name: bookorbit
+          image: ghcr.io/bookorbit/bookorbit:3.9.0
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            - name: APP_URL
+              value: https://books.lab.example.com
+            - name: POSTGRES_HOST
+              value: bookorbit-postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: bookorbit
+            - name: POSTGRES_DB
+              value: bookorbit
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bookorbit-secrets
+                  key: POSTGRES_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bookorbit-secrets
+                  key: JWT_SECRET
+            - name: SETUP_BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: bookorbit-secrets
+                  key: SETUP_BOOTSTRAP_TOKEN
+            - name: BOOK_REQUEST_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bookorbit-secrets
+                  key: BOOK_REQUEST_ENCRYPTION_KEY
+            - name: TZ
+              value: "Etc/UTC"
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: BOOK_DOCK_PATH
+              value: /book-dock
+            - name: OIDC_ALLOW_LOCAL_ISSUERS
+              value: "true"
+          ports:
+            - name: webui
+              containerPort: 3000
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            periodSeconds: 10
+          # Mirrors the hardening in upstream docker-compose.yml; the entrypoint
+          # needs these caps to fix /data ownership and drop to PUID:PGID.
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: books-library
+              mountPath: /books
+              subPath: library
+            - name: books-library
+              mountPath: /book-dock
+              subPath: ingest
+            # Book category folders of qBittorrent/SABnzbd. Different dataset
+            # than the library, so imports copy instead of hardlink.
+            - name: media-library
+              mountPath: /downloads/torrents/books
+              subPath: torrents/books
+            - name: media-library
+              mountPath: /downloads/usenet/books
+              subPath: usenet/complete/books
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 200m
+              memory: 384Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: bookorbit-data
+        - name: books-library
+          persistentVolumeClaim:
+            claimName: books-library
+        - name: media-library
+          persistentVolumeClaim:
+            claimName: media-library
+        - name: tmp
+          emptyDir: {}

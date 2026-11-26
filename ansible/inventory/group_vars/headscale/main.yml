@@ -1,0 +1,30 @@
+---
+# headscale VPS (roles/headscale). Tunables with defaults live in roles/headscale/defaults/main.yml.
+ansible_python_interpreter: auto_silent
+
+# --- server_bootstrap / server_hardening ---
+# Sudo user created by playbooks/server_bootstrap.yml; Ansible connects as it afterwards.
+server_admin_user: admin
+# SHA-512 crypt hash of the sudo password (`openssl passwd -6`). Only set on user creation.
+server_admin_password_hash: "{{ vault_vps_admin_password_hash }}"
+# Inbound ports opened by the iptables rules, on top of SSH (roles/server_hardening).
+# Add {port: 3478, proto: udp} if headscale_embedded_derp_enabled is turned on.
+server_firewall_allow:
+  - { port: 443, proto: tcp, comment: caddy/headscale }
+
+# Public hostname headscale is reachable on: `tailscale up --login-server=https://<this>`.
+headscale_domain: vpn.example.com
+# Cloudflare zone (apex domain) that headscale_domain lives under.
+cloudflare_zone: example.com
+# Base domain for MagicDNS device names (device-name.<this>). Must differ from
+# headscale_domain (headscale requirement); doesn't need to be publicly resolvable.
+headscale_dns_base_domain: hs.example.com
+
+# Only used when headscale_manage_policy is true.
+headscale_subnet_routes:
+  - 10.0.4.192/27
+  - 10.0.15.0/24
+
+letsencrypt_email: me@example.com
+# Zone / DNS / Edit token scoped to cloudflare_zone; Caddy uses it for DNS-01, Ansible for the A record.
+cloudflare_api_token: "{{ vault_headscale_cf_token }}"

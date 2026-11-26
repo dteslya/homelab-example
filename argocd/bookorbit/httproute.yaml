@@ -1,0 +1,16 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: bookorbit
+  namespace: media
+spec:
+  parentRefs:
+    - name: lab-gateway
+      namespace: envoy-gateway-system
+      sectionName: https
+  hostnames:
+    - "books.lab.example.com"
+  rules:
+    - backendRefs:
+        - name: bookorbit
+          port: 3000

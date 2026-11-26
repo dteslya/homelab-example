@@ -1,0 +1,3 @@
+{% from '_uci.j2' import section %}
+{{ section('dropbear', 'main', {'enable': true} | combine(openwrt_dropbear)) -}}
+{{ "\n" }}

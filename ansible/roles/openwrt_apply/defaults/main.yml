@@ -1,0 +1,5 @@
+---
+openwrt_apply_backup: /tmp/ansible-backup.tar
+openwrt_apply_rollback_seconds: 180
+# Init scripts to restart in addition to reload_config (for non-UCI files).
+openwrt_apply_restart: []

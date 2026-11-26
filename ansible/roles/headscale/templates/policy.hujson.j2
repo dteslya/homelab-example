@@ -1,0 +1,38 @@
+// {{ ansible_managed }}
+//
+// Starter policy: every device belonging to "{{ headscale_default_user }}"
+// can reach every other device belonging to "{{ headscale_default_user }}"
+// (including your homelab boxes once tailscale is running on them).
+//
+// Docs: https://headscale.net/stable/ref/policy/
+{
+  "groups": {
+    "group:homelab": ["{{ headscale_default_user }}@"]
+  },
+  "tagOwners": {
+    "{{ headscale_route_approver_tag }}": ["{{ headscale_default_user }}@"]
+  },
+  "autoApprovers": {
+    "routes": {
+{% for route in headscale_subnet_routes %}
+      "{{ route }}": ["{{ headscale_route_approver_tag }}"]{{ "," if not loop.last }}
+{% endfor %}
+    }
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["group:homelab"],
+      "dst": ["group:homelab:*"]
+    },
+    {
+      "action": "accept",
+      "src": ["group:homelab"],
+      "dst": [
+{% for route in headscale_subnet_routes %}
+        "{{ route }}:*"{{ "," if not loop.last }}
+{% endfor %}
+      ]
+    }
+  ]
+}

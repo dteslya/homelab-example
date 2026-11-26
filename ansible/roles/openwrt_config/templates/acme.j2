@@ -1,0 +1,6 @@
+{% from '_uci.j2' import section %}
+{{ section('acme', none, {'account_email': openwrt_acme_email, 'debug': false}) -}}
+{{ section('cert', inventory_hostname, {'enabled': true, 'staging': openwrt_acme_staging | bool, 'domains': [openwrt_fqdn],
+    'key_type': 'ec256', 'validation_method': 'dns', 'dns': 'dns_cf',
+    'credentials': ['CF_Token="' ~ openwrt_acme_cf_token ~ '"']}) -}}
+{{ "\n" }}

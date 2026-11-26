@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paperless-tika
+  namespace: documents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paperless-tika
+  template:
+    metadata:
+      labels:
+        app: paperless-tika
+    spec:
+      containers:
+        - name: tika
+          # Same tag as Paperless's upstream docker-compose.postgres-tika.yml
+          image: docker.io/apache/tika:3.3.3.1
+          ports:
+            - name: http
+              containerPort: 9998
+          readinessProbe:
+            tcpSocket:
+              port: 9998
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1536Mi

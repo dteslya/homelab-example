@@ -1,0 +1,41 @@
+---
+- name: Check packages
+  ansible.builtin.raw: |
+    if command -v apk >/dev/null; then is() { apk info -e "$1" >/dev/null 2>&1; }
+    else is() { opkg status "$1" | grep -q 'Status:.*installed'; }; fi
+    {% for p in openwrt_packages %}
+    is {{ p.name }} || echo "{{ p.name }}"
+    {% endfor %}
+  register: openwrt_packages_check
+  check_mode: false
+  changed_when: openwrt_packages_check.stdout_lines | length > 0
+
+- name: Install missing packages
+  when:
+    - not ansible_check_mode
+    - openwrt_packages_check.stdout_lines | length > 0
+  tags: [apply]
+  vars:
+    openwrt_packages_missing: "{{ openwrt_packages | selectattr('name', 'in', openwrt_packages_check.stdout_lines) | list }}"
+  ansible.builtin.raw: |
+    set -e
+    if command -v apk >/dev/null; then upd="apk update"; add="apk add"; del="apk del"; has="apk info -e"
+    else upd="opkg update"; add="opkg install"; del="opkg remove"; has="opkg status"; fi
+    $upd >/dev/null
+    {% for p in openwrt_packages_missing %}
+    {% if p.replaces is defined %}
+    if $has {{ p.replaces }} >/dev/null 2>&1; then $del {{ p.replaces }}; fi
+    {% endif %}
+    $add {{ p.name }}
+    {% if p.service is defined %}
+    /etc/init.d/{{ p.service }} enable
+    /etc/init.d/{{ p.service }} restart
+    {% endif %}
+    {% endfor %}
+    {% if openwrt_packages_missing | selectattr('name', 'match', '^(wpad|hostapd)') | list %}
+    wifi
+    {% endif %}
+    # Record configs shipped by new packages (e.g. /etc/config/acme): reload_config only fires
+    # config.change triggers for files it has seen before, so our first write would go unnoticed.
+    reload_config
+  changed_when: true

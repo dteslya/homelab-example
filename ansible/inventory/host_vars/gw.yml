@@ -1,0 +1,90 @@
+---
+# Gateway (TP-Link Archer AX23 v1). Uplink and all internal VLANs are trunked on the `wan` port.
+openwrt_ula_prefix: fdc0:31e0:e9f9::/48
+openwrt_dhcp_default_duid: "0004b6a476029aa644e295a85cf9d446cd22"
+openwrt_log_size: 128
+openwrt_cronloglevel: 7
+openwrt_uhttpd_cert_days: 397
+# NTP for mgmt-VLAN devices without DNS (the Instant On switch sw1 syncs from 10.0.15.1).
+openwrt_ntp_server_interface: vlan15
+
+openwrt_bridge_ports: [lan1, lan2, lan3, lan4, wan]
+openwrt_bridge_empty: true
+openwrt_bridge_ipv6: false
+openwrt_bridge_vlans:
+  - { vid: 15, ports: [lan4:u*, wan:t] }          # mgmt (routers/APs)
+  - { vid: 16, ports: [lan1, lan2, lan3:u*, wan:t] }  # Wi-Fi / client devices
+  - { vid: 2, ports: [wan:t] }                    # server VMs
+  - { vid: 4, ports: [wan:t] }                    # Kubernetes nodes + LoadBalancer IPs
+  - { vid: 14, ports: [wan:t] }                   # storage (TrueNAS)
+  - { vid: 500, ports: [wan:t] }                  # upstream: ISP router 192.168.100.1
+openwrt_vlan_interfaces:
+  - { vid: 15, ipaddr: 10.0.15.1, dns: "{{ openwrt_dns_servers }}" }
+  - { vid: 16, ipaddr: 10.0.16.1 }
+  - { vid: 500, ipaddr: 192.168.100.254, gateway: 192.168.100.1 }
+  - { vid: 2, ipaddr: 10.0.2.1 }
+  - { vid: 4, ipaddr: 10.0.4.1 }
+  - { vid: 14, ipaddr: 10.0.14.1 }
+
+openwrt_firewall_input: REJECT
+# One zone per VLAN. Inter-zone traffic is still fully permitted (openwrt_firewall_permit_internal);
+# zones exist so per-zone policies can be tightened later without renumbering anything.
+openwrt_firewall_zones:
+  - { name: mgmt, internal: true, input: ACCEPT, output: ACCEPT, forward: ACCEPT, network: [vlan15] }
+  - { name: clients, internal: true, input: ACCEPT, output: ACCEPT, forward: ACCEPT, network: [vlan16] }
+  - { name: servers, internal: true, input: ACCEPT, output: ACCEPT, forward: ACCEPT, network: [vlan2] }
+  - { name: k8s, internal: true, input: ACCEPT, output: ACCEPT, forward: ACCEPT, network: [vlan4] }
+  - { name: storage, internal: true, input: ACCEPT, output: ACCEPT, forward: ACCEPT, network: [vlan14] }
+  - { name: wan, input: REJECT, output: ACCEPT, forward: REJECT, masq: true, mtu_fix: true, network: [vlan500] }
+# reflection_zone keeps NAT loopback (public IP:port from inside) working from every internal zone,
+# as it did when everything was one 'lan' zone.
+openwrt_firewall_redirects:
+  - { name: qbittorrent, dest: k8s, src_dport: 6881, dest_ip: 10.0.4.201, dest_port: 6881,
+      reflection_zone: [mgmt, clients, servers, k8s, storage] }
+  - { name: slskd, dest: k8s, src_dport: 50300, dest_ip: 10.0.4.202, dest_port: 50300,
+      reflection_zone: [mgmt, clients, servers, k8s, storage] }
+
+openwrt_dnsmasq:
+  domainneeded: true
+  localise_queries: true
+  rebind_protection: true
+  rebind_localhost: true
+  local: /lan/
+  domain: lan
+  expandhosts: true
+  cachesize: 1000
+  authoritative: true
+  readethers: true
+  leasefile: /tmp/dhcp.leases
+  resolvfile: /tmp/resolv.conf.d/resolv.conf.auto
+  localservice: true
+  ednspacket_max: 1232
+  rebind_domain: [lab.admin.engineer, lab.example.com]
+# Publish <host>.lab.example.com -> mgmt IP for every router (LuCI Let's Encrypt certs are issued for these names)
+# and for the switches.
+openwrt_dns_hosts: "{{ groups['openwrt'] + groups['switches'] }}"
+openwrt_dhcp_pools:
+  - { interface: vlan16, start: 10, limit: 150, leasetime: 12h }
+
+openwrt_leds:
+  - { id: led_lan, name: LAN, sysfs: green:lan }
+  - { id: led_wan, name: WAN, sysfs: green:wan }
+  - { name: wifi, sysfs: green:wifi5g }
+
+openwrt_radios:
+  - name: radio0
+    path: 1e140000.pcie/pci0000:00/0000:00:01.0/0000:02:00.0
+    band: 2g
+    channel: 1   # fixed: ACS may pick 12/13, which US-region clients can't see
+    htmode: HE20
+    cell_density: 0
+    ifaces:
+      - { ssid: homelab-wifi-2.4, encryption: psk2, network: vlan16 }
+  - name: radio1
+    path: 1e140000.pcie/pci0000:00/0000:00:01.0/0000:02:00.0+1
+    band: 5g
+    channel: 36
+    htmode: HE80
+    cell_density: 0
+    ifaces:
+      - { roaming: true, network: vlan16 }

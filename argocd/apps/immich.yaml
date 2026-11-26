@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: immich
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: photos
+  source:
+    repoURL: git@github.com:your-github-user/homelab.git
+    targetRevision: HEAD
+    path: argocd/immich
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: photos
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

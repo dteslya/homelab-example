@@ -1,0 +1,21 @@
+# Static NFS PV for the manually created wd_green_pool/books dataset (see README).
+# Not CSI-provisioned on purpose: TrueNAS Cloud Sync needs a stable dataset path,
+# and Retain means deleting the PVC can never delete the books.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: books-library
+spec:
+  capacity:
+    storage: 500Gi # cosmetic on NFS, quota is enforced pool-side
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - hard
+    - nfsvers=4.1
+    - noatime
+  nfs:
+    server: 10.0.14.10
+    path: /mnt/wd_green_pool/books

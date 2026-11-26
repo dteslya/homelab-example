@@ -1,0 +1,77 @@
+# Nightly consistent copy of the FreshRSS data into freshrss-backups/ of the
+# documents dataset, so the documents B2 Cloud Sync picks it up: config.php
+# (holds the salt) plus each user's db.sqlite and config.php, in the same
+# layout as the data dir. Always the same filenames: the B2 bucket keeps prior
+# versions. Runs before the TrueNAS Cloud Sync push at 03:00.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: freshrss-backup
+  namespace: documents
+spec:
+  schedule: "50 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # Gives up if FreshRSS isn't running, so the pod can't sit Pending forever
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          # Same node as FreshRSS: the data PVC is an RWO iSCSI volume, which
+          # attaches to one node at a time
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: freshrss
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            # The data is owned by www-data (33); root reads it and writes the
+            # root-owned backup folder like Karakeep's
+            runAsUser: 0
+            runAsGroup: 0
+          containers:
+            - name: sqlite-backup
+              image: docker.io/keinos/sqlite3:3.54.1
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  cp /data/config.php /backups/config.php
+                  for db in /data/users/*/db.sqlite; do
+                    [ -f "$db" ] || continue
+                    user=$(basename "$(dirname "$db")")
+                    out=/backups/users/$user
+                    mkdir -p "$out"
+                    rm -f "$out/db.sqlite.tmp"
+                    # .backup takes a consistent copy of the live DB
+                    sqlite3 "$db" ".backup $out/db.sqlite.tmp"
+                    sqlite3 "$out/db.sqlite.tmp" "PRAGMA integrity_check;" | grep -qx ok
+                    mv "$out/db.sqlite.tmp" "$out/db.sqlite"
+                    cp "/data/users/$user/config.php" "$out/config.php"
+                  done
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                - name: documents-library
+                  mountPath: /backups
+                  subPath: freshrss-backups
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: freshrss-data-iscsi
+            - name: documents-library
+              persistentVolumeClaim:
+                claimName: documents-library

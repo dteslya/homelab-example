@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+# sshd uses the first value it sees for each option, so this file sorts first
+# in sshd_config.d (ahead of e.g. cloud-init's 50-cloud-init.conf).
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+AllowUsers {{ server_admin_user }}
+
+MaxAuthTries {{ server_ssh_max_auth_tries }}
+LoginGraceTime 30
+ClientAliveInterval 300
+ClientAliveCountMax 2
+
+X11Forwarding no
+AllowAgentForwarding no
+AllowTcpForwarding {{ server_ssh_allow_tcp_forwarding }}
+PermitTunnel no
+
+KexAlgorithms {{ server_ssh_kex_algorithms | join(',') }}
+Ciphers {{ server_ssh_ciphers | join(',') }}
+MACs {{ server_ssh_macs | join(',') }}
+HostKeyAlgorithms ssh-ed25519,ssh-ed25519-cert-v01@openssh.com,rsa-sha2-512,rsa-sha2-256

@@ -1,0 +1,13 @@
+---
+# USB-connected APC UPS. Gatus (`ups`) and Homepage check the NIS port.
+apcupsd_ups_cable: usb
+apcupsd_ups_type: usb
+apcupsd_device: ""
+# Seconds on battery before it counts as a power failure.
+apcupsd_onbattery_delay: 6
+# Shut the host down at this battery % or this many minutes left, whichever comes first.
+apcupsd_battery_level: 5
+apcupsd_minutes: 5
+# Network information server (apcaccess, Gatus, Homepage).
+apcupsd_nis_ip: 0.0.0.0
+apcupsd_nis_port: 3551

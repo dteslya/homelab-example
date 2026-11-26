@@ -1,0 +1,87 @@
+---
+# Same idea as roles/openwrt_apply: if SSH doesn't come back after
+# `netplan apply`, a timer on the host restores the old /etc/netplan.
+# Recreating a bridge drops the VMs' tap ports from it, so change the
+# network in a maintenance window and restart the VMs afterwards.
+- name: Snapshot /etc/netplan for rollback
+  ansible.builtin.command: tar -C / -cf /root/netplan-rollback.tar etc/netplan
+  changed_when: false
+  check_mode: false
+
+# Keeps cloud-init from writing its own netplan config on boot.
+- name: Disable cloud-init network config
+  ansible.builtin.copy:
+    content: "network: {config: disabled}\n"
+    dest: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy netplan config
+  ansible.builtin.template:
+    src: netplan.yaml.j2
+    dest: "{{ incus_netplan_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+    # netplan has no single-file check, so generate from a scratch root.
+    validate: >-
+      sh -c 'd=$(mktemp -d) && mkdir -p $d/etc/netplan &&
+      install -m 0600 %s $d/etc/netplan/config.yaml &&
+      netplan generate --root-dir $d; rc=$?; rm -rf $d; exit $rc'
+  register: incus_netplan_config
+
+- name: Remove obsolete netplan files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ incus_netplan_obsolete }}"
+  register: incus_netplan_obsolete_result
+
+# Formatting or comment changes don't touch the bridges: apply only when
+# the networkd units netplan generates from the new files differ.
+- name: Check whether the generated network config changes
+  when: incus_netplan_config is changed or incus_netplan_obsolete_result is changed
+  ansible.builtin.shell: |
+    set -e
+    before=$(cat /run/systemd/network/10-netplan-* | sha256sum)
+    netplan generate
+    after=$(cat /run/systemd/network/10-netplan-* | sha256sum)
+    [ "$before" = "$after" ] && echo same || echo differs
+  args:
+    executable: /bin/bash
+  register: incus_netplan_generated
+  changed_when: false
+
+- name: Apply netplan with rollback
+  when:
+    - incus_netplan_generated is not skipped
+    - incus_netplan_generated.stdout | default('differs') == 'differs'
+  block:
+    - name: Arm rollback timer
+      ansible.builtin.command: >-
+        systemd-run --unit=netplan-rollback --on-active={{ incus_netplan_rollback_seconds }}
+        /bin/sh -c 'rm -f /etc/netplan/*.yaml && tar -C / -xf /root/netplan-rollback.tar && netplan apply'
+      changed_when: false
+
+    # Detached: the SSH session may drop while the bridges are reconfigured.
+    - name: Apply netplan
+      ansible.builtin.command: netplan apply
+      async: 60
+      poll: 0
+      changed_when: true
+
+    - name: Wait for SSH to come back
+      delegate_to: localhost
+      become: false
+      ansible.builtin.command: >-
+        ssh -o BatchMode=yes -o ConnectTimeout=5 {{ ansible_user }}@{{ ansible_host }} true
+      register: incus_netplan_ssh
+      until: incus_netplan_ssh.rc == 0
+      retries: "{{ ((incus_netplan_rollback_seconds - 30) / 10) | int }}"
+      delay: 10
+      changed_when: false
+
+    - name: Disarm rollback timer
+      ansible.builtin.command: systemctl stop netplan-rollback.timer
+      changed_when: false

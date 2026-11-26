@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  # This ConfigMap will hold the files needed by the installer Job
+  name: argocd-installer-kustomize-config
+  namespace: kube-system
+data:
+  # File 1: kustomization.yaml
+  # This tells Kustomize what to do.
+  kustomization.yaml: |
+    apiVersion: kustomize.config.k8s.io/v1beta1
+    kind: Kustomization
+
+    # 1. Use the official ArgoCD HA manifest as the base.
+    resources:
+      - https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
+
+    # 2. Apply our patch specifically to the argocd-cm ConfigMap.
+    patches:
+      - path: argocd-cm-helm-patch.yaml
+        target:
+          kind: ConfigMap
+          name: argocd-cm
+
+  # File 2: argocd-cm-helm-patch.yaml
+  # This is the patch itself, in standard Kubernetes YAML format.
+  argocd-cm-helm-patch.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: argocd-cm
+    data:
+      kustomize.buildOptions: --enable-helm
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: argocd-installer
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      serviceAccountName: argocd-installer
+      containers:
+        - name: installer
+          # Use an image that includes both kubectl and kustomize
+          image: alpine/k8s:1.31.12
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for DNS to be responsive..."
+              # Use nslookup as a simple check for DNS resolution
+              until nslookup raw.githubusercontent.com; do
+                echo "DNS not ready yet, sleeping..."
+                sleep 5
+              done
+              echo "DNS is up. Proceeding with ArgoCD installation."
+
+              echo "Waiting for argocd namespace..."
+              until kubectl get namespace argocd >/dev/null 2>&1; do echo "waiting for argocd namespace to be created by kustomize..." && sleep 2; done
+
+              echo "Building patched ArgoCD manifest with Kustomize..."
+              kustomize build /config | kubectl apply -n argocd -f -
+              echo "ArgoCD installation complete."
+          volumeMounts:
+            - name: kustomize-config-volume
+              mountPath: /config
+      restartPolicy: OnFailure
+      volumes:
+        - name: kustomize-config-volume
+          configMap:
+            name: argocd-installer-kustomize-config
+  backoffLimit: 3
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-installer
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-installer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: argocd-installer
+    namespace: kube-system

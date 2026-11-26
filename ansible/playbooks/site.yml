@@ -1,0 +1,10 @@
+---
+# APs first, gateway last, one device at a time: a broken change stops the run
+# before it can cut off access to the remaining devices.
+- name: Configure OpenWrt devices
+  hosts: aps:gateway
+  serial: 1
+  any_errors_fatal: true
+  gather_facts: false
+  roles:
+    - openwrt_config

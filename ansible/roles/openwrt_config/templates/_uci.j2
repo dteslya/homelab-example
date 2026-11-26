@@ -1,0 +1,18 @@
+{#- Renders one UCI section in the exact format `uci commit` writes.
+    Booleans become '1'/'0', lists become `list` lines, none values are omitted. -#}
+{%- macro value(v) -%}
+{%- if v is sameas true -%}1{%- elif v is sameas false -%}0{%- else -%}{{ v | string | replace("'", "'\\''") }}{%- endif -%}
+{%- endmacro -%}
+{%- macro section(type, name=none, opts={}) %}
+
+config {{ type }}{{ (" '" ~ name ~ "'") if name else '' }}
+{% for k, v in opts.items() if v is not none %}
+{% if v is iterable and v is not string and v is not mapping %}
+{% for i in v %}
+	list {{ k }} '{{ value(i) }}'
+{% endfor %}
+{% else %}
+	option {{ k }} '{{ value(v) }}'
+{% endif %}
+{% endfor %}
+{%- endmacro %}

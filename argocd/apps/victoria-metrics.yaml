@@ -1,0 +1,105 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: victoria-metrics
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://victoriametrics.github.io/helm-charts/
+    chart: victoria-metrics-single
+    targetRevision: 0.52.0
+    helm:
+      releaseName: victoria-metrics
+      valuesObject:
+        server:
+          # Service is plain "victoria-metrics" (port 8428) - Grafana's datasource
+          # and the B2 size CronJob in monitoring-config point at it.
+          fullnameOverride: victoria-metrics
+          retentionPeriod: 30d
+          # Re-read the scrape config ConfigMap when ArgoCD changes it. By default it's
+          # only read on start/SIGHUP, so new scrape jobs silently waited for a pod restart.
+          extraArgs:
+            promscrape.configCheckInterval: 1m
+          # local-path, NOT NFS: TSDB is a heavy-write workload, same class of
+          # problem as slskd's sqlite - NFS locking won't cope with it.
+          persistentVolume:
+            enabled: true
+            storageClassName: local-path
+            size: 5Gi
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          # Built-in scraper instead of a separate vmagent/operator. Replaces the
+          # chart's default job list: its kubernetes-apiservers job alone is ~60k
+          # series and OOMed the 256Mi limit on first scrape, and kubernetes-pods
+          # pulls in Envoy/cert-manager/ArgoCD metrics nothing here charts.
+          # What's left is ~25k series: cAdvisor (per-pod CPU/memory) and node-exporter.
+          scrape:
+            enabled: true
+            config:
+              global:
+                scrape_interval: 30s
+              scrape_configs:
+                - job_name: victoriametrics
+                  static_configs:
+                    - targets: ["localhost:8428"]
+                - job_name: kubernetes-nodes-cadvisor
+                  scheme: https
+                  tls_config:
+                    ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                    # Talos kubelet serving certs are self-signed (same as metrics-server's --kubelet-insecure-tls)
+                    insecure_skip_verify: true
+                  bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+                  kubernetes_sd_configs:
+                    - role: node
+                  metrics_path: /metrics/cadvisor
+                  relabel_configs:
+                    - source_labels: [__meta_kubernetes_node_name]
+                      target_label: node
+                  # https://github.com/VictoriaMetrics/VictoriaMetrics/issues/4697#issuecomment-1656540535
+                  honor_timestamps: false
+                - job_name: node-exporter
+                  kubernetes_sd_configs:
+                    - role: endpoints
+                      namespaces:
+                        names: [monitoring]
+                  relabel_configs:
+                    - source_labels: [__meta_kubernetes_service_name]
+                      action: keep
+                      regex: node-exporter-prometheus-node-exporter
+                    - source_labels: [__meta_kubernetes_pod_node_name]
+                      target_label: node
+                # OpenWrt routers: prometheus-node-exporter-lua on the mgmt VLAN, installed by
+                # ansible/. IPs, not *.lab.example.com - those only resolve through gw's dnsmasq.
+                - job_name: openwrt
+                  static_configs:
+                    - targets: ["10.0.15.1:9100"]
+                      labels: {router: gw}
+                    - targets: ["10.0.15.11:9100"]
+                      labels: {router: ap1}
+                    - targets: ["10.0.15.12:9100"]
+                      labels: {router: ap2}
+                # Incus host: Ubuntu's prometheus-node-exporter on the mgmt address,
+                # installed by ansible/ (playbooks/incus.yml).
+                - job_name: incus
+                  static_configs:
+                    - targets: ["10.0.15.20:9100"]
+                      labels: {host: ser8}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    # No ServerSideApply: the chart has no large CRDs that need it, and with it
+    # ArgoCD kept the StatefulSet OutOfSync over the status.phase the API server
+    # adds to volumeClaimTemplates.
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slskd
+  namespace: media
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: slskd
+  template:
+    metadata:
+      labels:
+        app: slskd
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: slskd
+          image: slskd/slskd:0.26.2
+          envFrom:
+            - secretRef:
+                name: slskd-secrets
+          env:
+            - name: TZ
+              value: "Etc/UTC"
+            - name: SLSKD_REMOTE_CONFIGURATION
+              value: "true"
+            - name: SLSKD_DOWNLOADS_DIR
+              value: /data/soulseek/complete
+            - name: SLSKD_INCOMPLETE_DIR
+              value: /data/soulseek/incomplete
+            - name: SLSKD_SHARED_DIR
+              value: /data/media/music
+          ports:
+            - name: webui
+              containerPort: 5030
+            - name: peer-tcp
+              containerPort: 50300
+          volumeMounts:
+            - name: app
+              mountPath: /app
+            - name: media-library
+              mountPath: /data/soulseek
+              subPath: soulseek
+            - name: media-library
+              mountPath: /data/media/music
+              subPath: media/music
+              readOnly: true
+          resources:
+            requests:
+              cpu: 200m
+              memory: 384Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: app
+          persistentVolumeClaim:
+            claimName: slskd-app-iscsi
+        - name: media-library
+          persistentVolumeClaim:
+            claimName: media-library

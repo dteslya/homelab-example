@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vikunja-env
+  namespace: documents
+data:
+  VIKUNJA_SERVICE_PUBLICURL: https://tasks.lab.example.com
+  VIKUNJA_SERVICE_TIMEZONE: Etc/UTC
+  # SQLite (forced into WAL mode by Vikunja) at the image default
+  # /db/vikunja.db, on the vikunja-db PVC. Attachments are in the documents
+  # dataset at the image default /app/vikunja/files.
+  VIKUNJA_DATABASE_TYPE: sqlite
+  # Pocket ID login only. Anyone allowed through Pocket ID gets an account on
+  # first login; the local login and registration forms are off.
+  VIKUNJA_AUTH_LOCAL_ENABLED: "false"
+  VIKUNJA_SERVICE_ENABLEREGISTRATION: "false"
+  VIKUNJA_AUTH_OPENID_ENABLED: "true"
+  # Outgoing mail (reminders, overdue digests) via the lab relay, no auth
+  VIKUNJA_MAILER_ENABLED: "true"
+  VIKUNJA_MAILER_HOST: smtp-relay.mail.svc.cluster.local
+  VIKUNJA_MAILER_PORT: "25"
+  VIKUNJA_MAILER_USERNAME: ""
+  VIKUNJA_MAILER_PASSWORD: ""
+  VIKUNJA_MAILER_FORCESSL: "false"
+  VIKUNJA_MAILER_FROMEMAIL: vikunja@lab.example.com
+---
+# Vikunja only reads VIKUNJA_AUTH_OPENID_PROVIDERS_POCKETID_* env vars for a
+# provider key declared in a config file. CLIENTID and CLIENTSECRET come from
+# the vikunja-oidc secret, so nothing points at a client that doesn't exist yet.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vikunja-config
+  namespace: documents
+data:
+  config.yml: |
+    auth:
+      openid:
+        providers:
+          pocketid:
+            name: Pocket ID
+            authurl: https://id.lab.example.com

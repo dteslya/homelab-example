@@ -1,0 +1,4 @@
+---
+- name: Apply incus preseed
+  ansible.builtin.shell: incus admin init --preseed < /etc/incus/preseed.yaml
+  changed_when: true

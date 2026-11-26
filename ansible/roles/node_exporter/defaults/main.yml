@@ -1,0 +1,4 @@
+---
+# Ubuntu's prometheus-node-exporter. Bind to one address (host:port) to keep
+# it off the other interfaces; scraped by VictoriaMetrics (argocd/apps/victoria-metrics.yaml).
+node_exporter_listen: ":9100"

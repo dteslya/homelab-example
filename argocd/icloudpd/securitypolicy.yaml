@@ -1,0 +1,44 @@
+# Pocket ID login in front of the icloudpd web UIs.
+# See argocd/media-sso/securitypolicy.yaml for the shared pattern.
+# Bob's UI uses the gateway-admin client (admins group only).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: oidc-admin
+  namespace: photos
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: icloudpd-bob
+  oidc:
+    provider:
+      issuer: https://id.lab.example.com
+    clientID: 7a904906-0224-4719-8d5b-e6a6bdf9b5b7
+    clientSecret:
+      name: gateway-oidc-admin
+    scopes: ["openid", "email", "profile"]
+    refreshToken: true
+    logoutPath: /oauth2/logout
+---
+# Alice's UI uses the gateway-icloudpd-alice client, which only admits the
+# icloudpd-alice group (Alice and Bob), so Alice doesn't need to be an admin.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: oidc-alice
+  namespace: photos
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: icloudpd-alice
+  oidc:
+    provider:
+      issuer: https://id.lab.example.com
+    clientID: 9604a302-b9e3-4b87-9ad9-89b60b827f67
+    clientSecret:
+      name: gateway-oidc-icloudpd-alice
+    scopes: ["openid", "email", "profile"]
+    refreshToken: true
+    logoutPath: /oauth2/logout

@@ -1,0 +1,36 @@
+# In-cluster clients: smtp-relay.mail.svc.cluster.local:25 (or 587), no auth, no TLS
+apiVersion: v1
+kind: Service
+metadata:
+  name: smtp-relay
+  namespace: mail
+spec:
+  selector:
+    app: smtp-relay
+  ports:
+    - name: smtp
+      port: 25
+      targetPort: 587
+    - name: submission
+      port: 587
+      targetPort: 587
+---
+# LAN clients (e.g. TrueNAS): 10.0.4.203:587 -> the LAN-only listener on 2525,
+# which accepts only LAN_ALLOWED_CLIENTS. externalTrafficPolicy: Local preserves
+# the client source IP so Postfix can tell hosts apart.
+apiVersion: v1
+kind: Service
+metadata:
+  name: smtp-relay-lan
+  namespace: mail
+  annotations:
+    metallb.io/loadBalancerIPs: "10.0.4.203"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    app: smtp-relay
+  ports:
+    - name: submission
+      port: 587
+      targetPort: 2525

@@ -1,0 +1,54 @@
+---
+# Files this role owns on the device. Anything not listed (luci, rpcd, ucitrack, ...) is left untouched.
+# `uci: true` files are validated with `uci -c` before install and picked up by reload_config;
+# `restart` names an init script to restart when the file changes.
+openwrt_config_files:
+  - { src: network.j2, dest: /etc/config/network, uci: true }
+  - { src: wireless.j2, dest: /etc/config/wireless, uci: true }
+  - { src: firewall.j2, dest: /etc/config/firewall, uci: true }
+  - { src: dhcp.j2, dest: /etc/config/dhcp, uci: true }
+  - { src: system.j2, dest: /etc/config/system, uci: true }
+  - { src: dropbear.j2, dest: /etc/config/dropbear, uci: true }
+  - { src: uhttpd.j2, dest: /etc/config/uhttpd, uci: true }
+  - { src: authorized_keys.j2, dest: /etc/dropbear/authorized_keys, mode: "0600" }
+  - { src: prometheus-node-exporter-lua.j2, dest: /etc/config/prometheus-node-exporter-lua, uci: true, restart: prometheus-node-exporter-lua }
+  - { src: rc.local.j2, dest: /etc/rc.local }
+  - { src: acme.j2, dest: /etc/config/acme, uci: true, mode: "0600" }   # change triggers `service acme renew`
+  - { src: acme-uhttpd.j2, dest: /etc/hotplug.d/acme/10-uhttpd }
+  - { src: acme-gatus.j2, dest: /etc/hotplug.d/acme/20-gatus, mode: "0600" }   # holds the Gatus token
+
+openwrt_config_build_dir: "{{ playbook_dir }}/../build/{{ inventory_hostname }}"
+
+openwrt_compat_version: "1.1"
+openwrt_uhttpd_cert_days: 730
+openwrt_radios: []
+
+# OpenWrt stock rules, shared by every device, minus Allow-IPSec-ESP/Allow-ISAKMP (no IPsec endpoint here).
+openwrt_firewall_default_rules:
+  - { name: Allow-DHCP-Renew, src: wan, proto: udp, dest_port: 68, target: ACCEPT, family: ipv4 }
+  - { name: Allow-Ping, src: wan, proto: icmp, icmp_type: echo-request, family: ipv4, target: ACCEPT }
+  - { name: Allow-IGMP, src: wan, proto: igmp, family: ipv4, target: ACCEPT }
+  - { name: Allow-DHCPv6, src: wan, proto: udp, src_ip: "fc00::/6", dest_ip: "fc00::/6", dest_port: 546, family: ipv6, target: ACCEPT }
+  - name: Allow-MLD
+    src: wan
+    proto: icmp
+    src_ip: "fe80::/10"
+    icmp_type: [130/0, 131/0, 132/0, 143/0]
+    family: ipv6
+    target: ACCEPT
+  - name: Allow-ICMPv6-Input
+    src: wan
+    proto: icmp
+    icmp_type: [echo-request, echo-reply, destination-unreachable, packet-too-big, time-exceeded, bad-header,
+                unknown-header-type, router-solicitation, neighbour-solicitation, router-advertisement, neighbour-advertisement]
+    limit: 1000/sec
+    family: ipv6
+    target: ACCEPT
+  - name: Allow-ICMPv6-Forward
+    src: wan
+    dest: "*"
+    proto: icmp
+    icmp_type: [echo-request, echo-reply, destination-unreachable, packet-too-big, time-exceeded, bad-header, unknown-header-type]
+    limit: 1000/sec
+    family: ipv6
+    target: ACCEPT

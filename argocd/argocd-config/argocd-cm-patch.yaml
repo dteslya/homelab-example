@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+data:
+  kustomize.buildOptions: --enable-helm
+  url: https://argocd.lab.example.com
+  # Local admin stays enabled as a break-glass login if Pocket ID is down
+  oidc.config: |
+    name: Pocket ID
+    issuer: https://id.lab.example.com
+    clientID: 2c25c39e-ca2f-41e8-9675-27a3cc56373c
+    clientSecret: $argocd-oidc-pocketid:clientSecret
+    requestedScopes: ["openid", "profile", "email", "groups"]

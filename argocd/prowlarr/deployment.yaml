@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prowlarr
+  namespace: media
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prowlarr
+  template:
+    metadata:
+      labels:
+        app: prowlarr
+    spec:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: prowlarr
+          # https://www.linuxserver.io/our-images
+          image: lscr.io/linuxserver/prowlarr:3.1.0.5799-ls170
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: "Etc/UTC"
+            # Login is handled by Pocket ID at the gateway (argocd/media-sso);
+            # the API key is still enforced on /api.
+            - name: PROWLARR__AUTH__METHOD
+              value: External
+          ports:
+            - name: webui
+              containerPort: 9696
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: prowlarr-config-iscsi
+        - name: media-library
+          persistentVolumeClaim:
+            claimName: media-library

@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: documents
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Paperless-ngx document archive
+
+  sourceRepos:
+    - "git@github.com:your-github-user/homelab.git"
+
+  destinations:
+    - namespace: documents
+      server: https://kubernetes.default.svc
+
+  # Deny all cluster-scoped resources except the documents Namespace and the
+  # static NFS PersistentVolume backing the documents dataset.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: ""
+      kind: PersistentVolume
+
+  # Only allow the namespaced kinds these apps actually need
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: apps
+      kind: Deployment
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+    - group: batch
+      kind: Job
+    - group: batch
+      kind: CronJob
+    - group: bitnami.com
+      kind: SealedSecret
+
+  orphanedResources:
+    warn: true

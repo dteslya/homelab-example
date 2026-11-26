@@ -1,0 +1,10 @@
+{% from '_uci.j2' import section %}
+{{ section('system', none, {'hostname': inventory_hostname, 'ttylogin': false, 'log_size': openwrt_log_size, 'urandom_seed': false,
+    'compat_version': openwrt_compat_version, 'zonename': openwrt_zonename, 'log_proto': 'udp', 'conloglevel': 8,
+    'cronloglevel': openwrt_cronloglevel, 'timezone': openwrt_timezone}) -}}
+{{ section('timeserver', 'ntp', {'server': openwrt_ntp_servers, 'enable_server': true if openwrt_ntp_server_interface else none,
+    'interface': openwrt_ntp_server_interface}) -}}
+{% for l in openwrt_leds %}
+{{ section('led', l.id | default(none), {'name': l.name | default(none), 'sysfs': l.sysfs, 'trigger': 'none', 'default': false}) -}}
+{% endfor %}
+{{ "\n" }}

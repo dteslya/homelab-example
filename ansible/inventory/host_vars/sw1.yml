@@ -1,0 +1,4 @@
+---
+# HPE Instant On 1830 8G (JL810A), mgmt VLAN 15.
+# Only used by gw's dnsmasq record sw1.lab.example.com (openwrt_dns_hosts in host_vars/gw.yml).
+openwrt_mgmt_ip: "{{ ansible_host }}"

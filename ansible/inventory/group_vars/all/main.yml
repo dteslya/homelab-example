@@ -1,0 +1,139 @@
+---
+# Admin SSH public keys, used by every host (OpenWrt devices and the headscale VPS).
+admin_ssh_authorized_keys:
+  - ssh-ed25519 AAAA...REPLACE_WITH_YOUR_PUBLIC_KEY user@laptop
+
+# Settings shared by every OpenWrt device. Per-device values live in host_vars/.
+
+# --- system ---
+openwrt_zonename: Etc/UTC
+openwrt_timezone: UTC0
+openwrt_ntp_servers:
+  - 0.openwrt.pool.ntp.org
+  - 1.openwrt.pool.ntp.org
+  - 2.openwrt.pool.ntp.org
+  - 3.openwrt.pool.ntp.org
+# Serve NTP to LAN clients on this interface (none = client only).
+openwrt_ntp_server_interface: null
+openwrt_log_size: 64
+openwrt_cronloglevel: 5
+openwrt_leds: []
+# Extra shell lines for /etc/rc.local (runs once at boot, before "exit 0").
+openwrt_rc_local: []
+
+# --- access ---
+openwrt_ssh_authorized_keys: "{{ admin_ssh_authorized_keys }}"
+# SSH: keys only, and only on the management VLAN interface.
+openwrt_dropbear:
+  PasswordAuth: "off"
+  RootPasswordAuth: "off"
+  Port: 22
+  Interface: vlan{{ openwrt_mgmt_vlan }}
+# LuCI: HTTPS only (HTTP just redirects), bound to the device's management address.
+openwrt_uhttpd_redirect_https: true
+openwrt_mgmt_ip: "{{ (openwrt_vlan_interfaces | selectattr('vid', 'eq', openwrt_mgmt_vlan) | first).ipaddr }}"
+# Init scripts that must be stopped and disabled on this device.
+openwrt_services_disabled: []
+
+# --- acme ---
+# LuCI cert from Let's Encrypt via Cloudflare DNS-01, issued and renewed on the device itself.
+# The gateway's dnsmasq resolves openwrt_fqdn to openwrt_mgmt_ip (openwrt_dns_hosts in host_vars/gw.yml).
+openwrt_acme_domain: lab.example.com
+openwrt_fqdn: "{{ inventory_hostname }}.{{ openwrt_acme_domain }}"
+openwrt_acme_email: vestals.72-boards@icloud.com
+openwrt_acme_staging: false
+openwrt_acme_cf_token: "{{ vault_openwrt_acme_cf_token }}"
+
+# --- monitoring ---
+# Prometheus exporter (prometheus-node-exporter-lua) listens on the mgmt VLAN only.
+openwrt_exporter_interface: vlan15
+openwrt_exporter_port: 9100
+# ACME results are pushed to Gatus (external-endpoints, group openwrt, in argocd/gatus/config/config.yaml).
+openwrt_gatus_url: https://status.lab.example.com
+openwrt_gatus_acme_endpoint: openwrt_acme-{{ inventory_hostname }}
+openwrt_gatus_token: "{{ vault_gatus_heartbeat_token }}"
+
+# --- network ---
+openwrt_mgmt_vlan: 15
+openwrt_mgmt_gateway: 10.0.15.1
+openwrt_dns_servers: [1.1.1.1, 8.8.8.8]
+# Physical ports in br-lan, and per-VLAN port membership (DSA bridge-vlan syntax: port, port:t, port:u*).
+openwrt_bridge_ports: []
+openwrt_bridge_vlans: []
+# Layer-3 interfaces on top of br-lan.<vid>; ipaddr omitted = L2-only (no address on this device).
+openwrt_vlan_interfaces: []
+
+# --- firewall ---
+openwrt_firewall_input: ACCEPT
+openwrt_firewall_lan_networks: [lan]
+openwrt_firewall_wan_networks: []
+# Zones marked internal: true are the ones covered by openwrt_firewall_permit_internal.
+openwrt_firewall_zones:
+  - { name: lan, internal: true, input: ACCEPT, output: ACCEPT, forward: ACCEPT, network: "{{ openwrt_firewall_lan_networks }}" }
+  - { name: wan, input: REJECT, output: ACCEPT, forward: REJECT, masq: true, mtu_fix: true, network: "{{ openwrt_firewall_wan_networks }}" }
+# true = forwarding between every pair of internal zones and from each internal zone to wan ("permit any any").
+openwrt_firewall_permit_internal: true
+openwrt_firewall_forwardings: []
+openwrt_firewall_rules: []
+openwrt_firewall_redirects: []
+
+# --- dhcp / dns ---
+openwrt_dnsmasq:
+  domainneeded: true
+  boguspriv: true
+  filterwin2k: false
+  localise_queries: true
+  rebind_protection: true
+  rebind_localhost: true
+  local: /lan/
+  domain: lan
+  expandhosts: true
+  nonegcache: false
+  authoritative: true
+  readethers: true
+  leasefile: /tmp/dhcp.leases
+  resolvfile: /tmp/resolv.conf.d/resolv.conf.auto
+  nonwildcard: true
+  localservice: true
+  ednspacket_max: 1232
+openwrt_dhcp_pools: []
+# Inventory hosts whose openwrt_fqdn -> openwrt_mgmt_ip record this device's dnsmasq serves.
+openwrt_dns_hosts: []
+
+# --- wireless ---
+openwrt_wifi_country: US
+openwrt_wifi_ssid: homelab-wifi
+openwrt_wifi_psk: "{{ vault_openwrt_wifi_psk }}"
+# WPA2/WPA3 transition mode: WPA3 (SAE) for capable clients, WPA2 fallback, same passphrase.
+openwrt_wifi_encryption: sae-mixed
+# 802.11r/k/v fast roaming across all APs broadcasting openwrt_wifi_ssid.
+# No r0kh/r1kh lists: OpenWrt derives the FT key from mobility_domain + passphrase on each device.
+openwrt_wifi_roaming:
+  ieee80211w: 1               # management frame protection: optional (WPA3 clients use it, legacy ones may skip)
+  ieee80211r: true
+  ieee80211k: true
+  time_advertisement: 2
+  time_zone: "{{ openwrt_timezone }}"
+  wnm_sleep_mode: true
+  bss_transition: true
+  mobility_domain: 4f57
+  ft_over_ds: false
+  wpa_disable_eapol_key_retries: true
+# Extra wifi-iface options for this device's roaming SSID.
+openwrt_wifi_iface_extra: {}
+
+# --- packages ---
+# Extra packages don't survive a LuCI sysupgrade; this keeps them installed (apk on 25.12+, opkg before).
+openwrt_packages:
+  - name: wpad-mbedtls        # full build: 802.11k/v (bss_transition, wnm_sleep_mode) need it
+    replaces: wpad-basic-mbedtls
+    service: wpad
+  - name: prometheus-node-exporter-lua   # scraped by VictoriaMetrics' openwrt job (argocd/apps/victoria-metrics.yaml)
+    service: prometheus-node-exporter-lua
+  - name: prometheus-node-exporter-lua-openwrt
+  - name: prometheus-node-exporter-lua-netstat
+  - name: prometheus-node-exporter-lua-wifi
+  - name: prometheus-node-exporter-lua-wifi_stations
+  - name: acme-acmesh          # acme.sh + acme-common (init script, nightly renewal cron)
+    service: acme
+  - name: acme-acmesh-dnsapi   # dns_cf

@@ -1,0 +1,67 @@
+# Nightly consistent copy of the Karakeep SQLite DB (on the karakeep-data
+# iSCSI PVC) into karakeep-backups/ of the documents dataset, which the B2
+# Cloud Sync covers. Always the same filename: the B2 bucket keeps prior
+# versions. Runs before the TrueNAS Cloud Sync push at 03:00.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: karakeep-backup
+  namespace: documents
+spec:
+  schedule: "30 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # Gives up if Karakeep isn't running, so the pod can't sit Pending forever
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          # Same node as Karakeep: the DB PVC is an RWO iSCSI volume, which
+          # attaches to one node at a time
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: karakeep
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            # Karakeep runs as root, so the DB is root-owned
+            runAsUser: 0
+            runAsGroup: 0
+          containers:
+            - name: sqlite-backup
+              image: docker.io/keinos/sqlite3:3.54.1
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  rm -f /backups/karakeep.db.tmp
+                  sqlite3 /data/db.db ".backup /backups/karakeep.db.tmp"
+                  sqlite3 /backups/karakeep.db.tmp "PRAGMA integrity_check;" | grep -qx ok
+                  mv /backups/karakeep.db.tmp /backups/karakeep.db
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  readOnly: true
+                - name: documents-library
+                  mountPath: /backups
+                  subPath: karakeep-backups
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: karakeep-data
+            - name: documents-library
+              persistentVolumeClaim:
+                claimName: documents-library

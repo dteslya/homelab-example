@@ -1,0 +1,19 @@
+{% from '_uci.j2' import section %}
+{% for r in openwrt_radios %}
+{{ section('wifi-device', r.name, {'type': 'mac80211', 'path': r.path, 'band': r.band, 'channel': r.channel,
+    'htmode': r.htmode, 'cell_density': r.cell_density | default(none), 'country': openwrt_wifi_country,
+    'disabled': r.disabled | default(none)}) -}}
+{% for i in r.ifaces %}
+{% set base = {'device': r.name, 'mode': 'ap', 'network': i.network} %}
+{% if i.roaming | default(false) %}
+{% set opts = base | combine({'ssid': openwrt_wifi_ssid, 'encryption': openwrt_wifi_encryption, 'key': openwrt_wifi_psk},
+                             openwrt_wifi_roaming, openwrt_wifi_iface_extra) %}
+{% else %}
+{% set opts = base | combine({'ssid': i.ssid, 'encryption': i.encryption,
+                              'key': openwrt_wifi_psk if i.encryption != 'none' else none,
+                              'disabled': i.disabled | default(none)}) %}
+{% endif %}
+{{ section('wifi-iface', 'default_' ~ r.name ~ ('' if loop.first else '_' ~ loop.index0), opts) -}}
+{% endfor %}
+{% endfor %}
+{{ "\n" }}

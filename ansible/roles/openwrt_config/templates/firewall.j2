@@ -1,0 +1,25 @@
+{% from '_uci.j2' import section %}
+{{ section('defaults', none, {'syn_flood': true, 'input': openwrt_firewall_input, 'output': 'ACCEPT', 'forward': 'REJECT'}) -}}
+{% set internal = openwrt_firewall_zones | selectattr('internal', 'defined') | selectattr('internal') | map(attribute='name') | list %}
+{% for z in openwrt_firewall_zones %}
+{{ section('zone', none, {'name': z.name, 'input': z.input, 'output': z.output, 'forward': z.forward,
+    'masq': z.masq | default(none), 'mtu_fix': z.mtu_fix | default(none), 'network': z.network or none}) -}}
+{% endfor %}
+{% if openwrt_firewall_permit_internal %}
+{% for src in internal %}
+{{ section('forwarding', none, {'src': src, 'dest': 'wan'}) -}}
+{% for dest in internal if dest != src %}
+{{ section('forwarding', none, {'src': src, 'dest': dest}) -}}
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% for f in openwrt_firewall_forwardings %}
+{{ section('forwarding', none, f) -}}
+{% endfor %}
+{% for r in openwrt_firewall_default_rules + openwrt_firewall_rules %}
+{{ section('rule', none, r) -}}
+{% endfor %}
+{% for r in openwrt_firewall_redirects %}
+{{ section('redirect', none, {'target': 'DNAT', 'src': 'wan', 'dest': 'lan'} | combine(r)) -}}
+{% endfor %}
+{{ "\n" }}

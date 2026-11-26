@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bentopdf
+  namespace: media
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bentopdf
+  template:
+    metadata:
+      labels:
+        app: bentopdf
+    spec:
+      containers:
+        - name: bentopdf
+          # https://github.com/alam00000/bentopdf/releases — the "simple"
+          # image is the self-hosted build without the marketing pages
+          image: ghcr.io/alam00000/bentopdf-simple:2.8.12
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+          # nginx-unprivileged; all PDF processing happens in the browser.
+          # The image sets USER by name (nginx), so runAsNonRoot needs the
+          # numeric UID or the kubelet refuses to start the container.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi

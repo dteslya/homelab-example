@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: beets-config
+  namespace: media
+data:
+  config.yaml: |
+    directory: /data/media/music
+    library: /config/musiclibrary.db
+
+    import:
+      move: yes
+      write: yes
+      resume: ask
+      quiet_fallback: skip
+
+    original_date: yes
+
+    paths:
+      default: $albumartist/$original_year $album%aunique{}/$track $title
+      singleton: Non-Album/$artist/$title
+      comp: Compilations/$album%aunique{}/$track $title
+
+    plugins:
+      - web
+      - musicbrainz
+    web:
+      host: 0.0.0.0
+      port: 8337

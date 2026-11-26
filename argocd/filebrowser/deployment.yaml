@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: filebrowser
+  namespace: media
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: filebrowser
+  template:
+    metadata:
+      labels:
+        app: filebrowser
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: seed-config
+          image: busybox:1.38@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
+          command:
+            - sh
+            - -c
+            - cp /seed/config.yaml /home/filebrowser/data/config.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /home/filebrowser/data
+            - name: seed
+              mountPath: /seed
+      containers:
+        - name: filebrowser
+          image: ghcr.io/gtsteffaniak/filebrowser:stable@sha256:de2b4c4d18485ea202ab2cdada5bd25d8f0b8ed071712c8216a67194c31285ae
+          envFrom:
+            - secretRef:
+                name: filebrowser-oidc
+          ports:
+            - name: webui
+              containerPort: 80
+          volumeMounts:
+            - name: config
+              mountPath: /home/filebrowser/data
+            - name: media-library
+              mountPath: /srv
+            - name: books-library
+              mountPath: /srv/books
+            - name: cache
+              mountPath: /cache
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: filebrowser-config-iscsi
+        - name: seed
+          configMap:
+            name: filebrowser-config
+        - name: media-library
+          persistentVolumeClaim:
+            claimName: media-library
+        - name: books-library
+          persistentVolumeClaim:
+            claimName: books-library
+        - name: cache
+          emptyDir: {}

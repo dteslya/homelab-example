@@ -1,0 +1,66 @@
+# Daily size/object count of each B2 bucket, imported into VictoriaMetrics as
+# b2_bucket_bytes / b2_bucket_objects (Grafana "Homelab" dashboard). Pings the
+# backups_b2-size heartbeat in Gatus on success. Listing costs a few hundred
+# class C transactions a day, well within B2's free 2500.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: b2-size
+  namespace: monitoring
+spec:
+  schedule: "0 6 * * *" # after the 03:00 Cloud Sync pushes
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: rclone
+              image: rclone/rclone:1.76.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  : > /tmp/metrics
+                  for bucket in $B2_BUCKETS; do
+                    # {"count":N,"bytes":N,"sizeless":N}
+                    size=$(rclone size --json ":b2:$bucket")
+                    bytes=$(echo "$size" | sed -n 's/.*"bytes":\([0-9]*\).*/\1/p')
+                    count=$(echo "$size" | sed -n 's/.*"count":\([0-9]*\).*/\1/p')
+                    echo "$bucket: $bytes bytes, $count objects"
+                    echo "b2_bucket_bytes{bucket=\"$bucket\"} $bytes" >> /tmp/metrics
+                    echo "b2_bucket_objects{bucket=\"$bucket\"} $count" >> /tmp/metrics
+                  done
+                  wget -q -O - --post-file=/tmp/metrics http://victoria-metrics:8428/api/v1/import/prometheus
+                  wget -q -O - --post-data= --header "Authorization: Bearer $HEARTBEAT_TOKEN" \
+                    "http://gatus:8080/api/v1/endpoints/backups_b2-size/external?success=true"
+              env:
+                - name: B2_BUCKETS
+                  value: "actual-86b753e39e8b7e96 books-c2fa105b docs-89fc0091 photos-db58a118 vaultwarden-4dc6481a3ac58e12 homelab-config-backup-e712021b"
+                # On-the-fly :b2: remote, read-only key covering all buckets
+                - name: RCLONE_B2_ACCOUNT
+                  valueFrom:
+                    secretKeyRef:
+                      name: b2-readonly
+                      key: account
+                - name: RCLONE_B2_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: b2-readonly
+                      key: key
+                - name: HEARTBEAT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: gatus-secrets
+                      key: HEARTBEAT_TOKEN
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi

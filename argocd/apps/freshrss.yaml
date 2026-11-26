@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: freshrss
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: documents
+  source:
+    repoURL: git@github.com:your-github-user/homelab.git
+    targetRevision: HEAD
+    path: argocd/freshrss
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: documents
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

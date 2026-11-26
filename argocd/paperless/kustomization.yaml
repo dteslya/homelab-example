@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - secret.yaml
+  - secret-oidc.yaml  # uncomment once sealed, see README "Paperless-ngx"
+  - configmap.yaml
+  - pvc.yaml
+  - deployment-postgres.yaml
+  - deployment-valkey.yaml
+  - deployment-tika.yaml
+  - deployment-gotenberg.yaml
+  - deployment.yaml
+  - service.yaml
+  - cronjob-export.yaml
+  - httproute.yaml

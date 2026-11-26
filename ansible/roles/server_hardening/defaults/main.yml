@@ -1,0 +1,41 @@
+---
+# --- ssh ---
+# Set to "yes" (or "local") if you need `ssh -L` tunnels to the VPS.
+server_ssh_allow_tcp_forwarding: "no"
+server_ssh_max_auth_tries: 3
+# Modern algorithms only. mlkem768x25519-sha256 needs OpenSSH 9.9+ (Ubuntu
+# 25.04+, Debian 13); older sshd rejects unknown names, so it's left out here.
+server_ssh_kex_algorithms:
+  - sntrup761x25519-sha512@openssh.com
+  - curve25519-sha256
+  - curve25519-sha256@libssh.org
+server_ssh_ciphers:
+  - chacha20-poly1305@openssh.com
+  - aes256-gcm@openssh.com
+  - aes128-gcm@openssh.com
+server_ssh_macs:
+  - hmac-sha2-512-etm@openssh.com
+  - hmac-sha2-256-etm@openssh.com
+
+# --- firewall ---
+# Inbound ports opened on top of SSH. Without src a rule goes into both the
+# IPv4 and IPv6 rules; with src only into the family of that address:
+#   - { port: 443, proto: tcp, comment: caddy }
+#   - { port: 8443, proto: tcp, src: 10.0.0.0/8, comment: incus }
+server_firewall_allow: []
+# SSH brute-force throttle: a source opening more than this many new
+# connections within the window is dropped until it slows down.
+server_firewall_ssh_hitcount: 6
+server_firewall_ssh_seconds: 30
+
+# --- sysctl ---
+# Extra keys for /etc/sysctl.d/90-hardening.conf, e.g. { vm.swappiness: 10 }.
+server_sysctl_extra: {}
+
+# --- misc ---
+server_journald_max_use: 200M
+# Services to stop and disable; missing ones are skipped.
+server_disabled_services: []
+server_purge_packages: []
+# Files to delete, e.g. apt sources left behind by a purged package.
+server_purge_files: []

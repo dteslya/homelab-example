@@ -1,0 +1,6 @@
+---
+- name: Deploy and manage headscale
+  hosts: headscale
+  become: true
+  roles:
+    - headscale

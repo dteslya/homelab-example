@@ -1,0 +1,65 @@
+---
+# Incus hypervisor (playbooks/incus.yml). Tunables with defaults live in each role's defaults/main.yml.
+ansible_python_interpreter: auto_silent
+
+# --- server_bootstrap / server_hardening ---
+# Created by the Ubuntu installer, so bootstrap connects as it too (-k -K) and needs no password hash.
+server_admin_user: admin
+server_bootstrap_user: admin
+# FORWARD stays DROP: the VM bridges are unmanaged (bridged, not routed), br_netfilter
+# isn't loaded and ip_forward is 0, so VM traffic never reaches iptables. A managed
+# Incus bridge with NAT would need FORWARD rules here.
+server_firewall_allow:
+  - { port: 8443, proto: tcp, src: 10.0.0.0/16, comment: incus-api }
+  - { port: 3551, proto: tcp, src: 10.0.0.0/16, comment: apcupsd-nis }
+  - { port: 9100, proto: tcp, src: 10.0.0.0/16, comment: node-exporter }
+# Leftovers from before Ansible: Zabbix is retired (VictoriaMetrics scrapes
+# node-exporter instead), tailscale was never logged in (the in-cluster router
+# covers this subnet), no snaps are used. Purging snapd also drops the
+# ubuntu-server-minimal metapackage, which is harmless.
+server_purge_packages:
+  - zabbix-agent2
+  - zabbix-release
+  - tailscale
+  - tailscale-archive-keyring
+  - snapd
+server_purge_files:
+  - /etc/apt/sources.list.d/tailscale.list
+
+# --- network (roles/incus) ---
+# enp1s0 carries the mgmt VLAN untagged (host address on br-mgmt) and the VM VLANs tagged.
+incus_uplink: enp1s0
+incus_mgmt_bridge: br-mgmt
+incus_mgmt_address: 10.0.15.20/24
+incus_mgmt_gateway: 10.0.15.1
+incus_dns_servers: [1.1.1.1]
+incus_vlans: [2, 4, 14]
+
+# --- incus preseed (roles/incus) ---
+# Terraform only references the pool and profiles by name (incus_storage_pool,
+# incus_profiles in terraform.tfvars); they're owned here.
+incus_preseed:
+  config:
+    core.https_address: ":8443"
+  storage_pools:
+    - name: homelab
+      driver: dir
+      config:
+        source: /var/lib/incus/storage-pools/homelab
+  profiles:
+    - name: default
+      description: Default Incus profile
+      devices:
+        root: { path: /, pool: homelab, type: disk }
+    - name: vlan2
+      devices:
+        enp1s0: { nictype: bridged, parent: br-vlan2, type: nic }
+    - name: vlan4
+      devices:
+        enp1s0: { nictype: bridged, parent: br-vlan4, type: nic }
+    - name: vlan14
+      devices:
+        enp1s0: { nictype: bridged, parent: br-vlan14, type: nic }
+
+# --- monitoring ---
+node_exporter_listen: 10.0.15.20:9100

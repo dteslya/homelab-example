@@ -1,0 +1,163 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: grafana
+    targetRevision: 10.5.15
+    helm:
+      releaseName: grafana
+      valuesObject:
+        admin:
+          existingSecret: grafana-admin-credentials
+          userKey: admin-user
+          passwordKey: admin-password
+        persistence:
+          enabled: true
+          type: pvc
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          size: 2Gi
+        # The chown init container runs as root with only CAP_CHOWN, so on any
+        # restart it can't traverse Grafana's 0700 png/csv/pdf dirs and fails.
+        # The volume is already owned by 472 from the first boot.
+        initChownData:
+          enabled: false
+        # The RWO local-path PVC pins Grafana to one node, so a RollingUpdate
+        # surge pod must fit there next to the old one; that node is at ~99%
+        # of requested memory and the new pod stays Pending. Replace in place.
+        deploymentStrategy:
+          type: Recreate
+        resources:
+          requests:
+            cpu: 50m
+            memory: 256Mi
+          limits:
+            memory: 512Mi
+        service:
+          type: ClusterIP
+        # Client secret for Pocket ID SSO, from the grafana-oidc SealedSecret
+        # in monitoring-config
+        envValueFrom:
+          GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET:
+            secretKeyRef:
+              name: grafana-oidc
+              key: client-secret
+        # Patched OpenWrt dashboard from the grafana-dashboard-openwrt ConfigMap
+        # in monitoring-config. Mounted over the default provider's openwrt.json,
+        # which also shadows the stale gnetId 11147 download left on the PVC.
+        # subPath mounts don't pick up ConfigMap changes: restart Grafana after editing.
+        extraConfigmapMounts:
+          - name: dashboard-openwrt
+            configMap: grafana-dashboard-openwrt
+            mountPath: /var/lib/grafana/dashboards/default/openwrt.json
+            subPath: openwrt.json
+            readOnly: true
+        # grafana.ini: served behind Envoy Gateway HTTPRoute, TLS terminates at the gateway
+        grafana.ini:
+          server:
+            root_url: "https://grafana.lab.example.com"
+          # Pocket ID SSO. The client only admits the admins group; the local
+          # admin user from grafana-admin-credentials remains as break-glass.
+          auth.generic_oauth:
+            enabled: true
+            name: Pocket ID
+            client_id: eb548023-9639-4c36-93a5-d98c0493616f
+            scopes: openid email profile groups
+            auth_url: https://id.lab.example.com/authorize
+            token_url: https://id.lab.example.com/api/oidc/token
+            api_url: https://id.lab.example.com/api/oidc/userinfo
+            use_pkce: true
+            allow_sign_up: true
+            login_attribute_path: preferred_username
+            role_attribute_path: contains(groups[*], 'admins') && 'Admin' || 'Viewer'
+
+        # VictoriaMetrics speaks the Prometheus query API
+        datasources:
+          datasources.yaml:
+            apiVersion: 1
+            datasources:
+              - name: VictoriaMetrics
+                uid: victoriametrics
+                type: prometheus
+                url: http://victoria-metrics.monitoring.svc:8428
+                access: proxy
+                isDefault: true
+
+        dashboardProviders:
+          dashboardproviders.yaml:
+            apiVersion: 1
+            providers:
+              - name: default
+                orgId: 1
+                folder: ""
+                type: file
+                disableDeletion: true
+                editable: false
+                options:
+                  path: /var/lib/grafana/dashboards/default
+        dashboards:
+          default:
+            node-exporter-full:
+              gnetId: 1860
+              revision: 45
+              datasource: VictoriaMetrics
+            # OpenWrt routers: see extraConfigmapMounts above
+            # cAdvisor metrics only - there is no kube-state-metrics in this stack.
+            # b2_bucket_bytes comes from the b2-size CronJob in monitoring-config.
+            homelab:
+              json: |
+                {
+                  "title": "Homelab",
+                  "uid": "homelab",
+                  "timezone": "browser",
+                  "time": {"from": "now-24h", "to": "now"},
+                  "refresh": "1m",
+                  "templating": {"list": [{
+                    "name": "namespace", "type": "query", "multi": true, "includeAll": true, "refresh": 2,
+                    "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+                    "query": "label_values(container_memory_working_set_bytes{pod!=\"\"}, namespace)",
+                    "current": {"text": "All", "value": "$__all"}
+                  }]},
+                  "panels": [
+                    {"type": "timeseries", "title": "CPU by namespace", "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+                     "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+                     "fieldConfig": {"defaults": {"unit": "cores"}},
+                     "targets": [{"expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{container!=\"\", pod!=\"\", namespace=~\"$namespace\"}[5m]))", "legendFormat": "{{namespace}}"}]},
+                    {"type": "timeseries", "title": "Memory by namespace", "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+                     "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+                     "fieldConfig": {"defaults": {"unit": "bytes"}},
+                     "targets": [{"expr": "sum by (namespace) (container_memory_working_set_bytes{container!=\"\", pod!=\"\", namespace=~\"$namespace\"})", "legendFormat": "{{namespace}}"}]},
+                    {"type": "timeseries", "title": "CPU by pod", "gridPos": {"x": 0, "y": 8, "w": 12, "h": 10},
+                     "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+                     "fieldConfig": {"defaults": {"unit": "cores"}},
+                     "targets": [{"expr": "sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{container!=\"\", pod!=\"\", namespace=~\"$namespace\"}[5m]))", "legendFormat": "{{namespace}}/{{pod}}"}]},
+                    {"type": "timeseries", "title": "Memory by pod", "gridPos": {"x": 12, "y": 8, "w": 12, "h": 10},
+                     "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+                     "fieldConfig": {"defaults": {"unit": "bytes"}},
+                     "targets": [{"expr": "sum by (namespace, pod) (container_memory_working_set_bytes{container!=\"\", pod!=\"\", namespace=~\"$namespace\"})", "legendFormat": "{{namespace}}/{{pod}}"}]},
+                    {"type": "timeseries", "title": "B2 bucket size", "timeFrom": "30d", "gridPos": {"x": 0, "y": 18, "w": 12, "h": 8},
+                     "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+                     "fieldConfig": {"defaults": {"unit": "bytes"}},
+                     "targets": [{"expr": "max by (bucket) (last_over_time(b2_bucket_bytes[2d]))", "legendFormat": "{{bucket}}"}]},
+                    {"type": "timeseries", "title": "B2 object count", "timeFrom": "30d", "gridPos": {"x": 12, "y": 18, "w": 12, "h": 8},
+                     "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+                     "targets": [{"expr": "max by (bucket) (last_over_time(b2_bucket_objects[2d]))", "legendFormat": "{{bucket}}"}]}
+                  ],
+                  "schemaVersion": 39
+                }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

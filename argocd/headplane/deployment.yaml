@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headplane
+  namespace: headplane
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: headplane
+  template:
+    metadata:
+      labels:
+        app: headplane
+    spec:
+      containers:
+        - name: headplane
+          # Check headscale compatibility in the release notes before bumping
+          image: ghcr.io/tale/headplane:0.8.2
+          env:
+            - name: TZ
+              value: "Etc/UTC"
+          ports:
+            - name: webui
+              containerPort: 3000
+          volumeMounts:
+            - name: config
+              mountPath: /etc/headplane/config.yaml
+              subPath: config.yaml
+            - name: secrets
+              mountPath: /etc/headplane/secrets
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/headplane
+          # Also checks that headscale answers, so no liveness probe: a
+          # headscale outage shouldn't restart Headplane.
+          readinessProbe:
+            httpGet:
+              path: /admin/healthz
+              port: 3000
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: headplane-config
+        - name: secrets
+          secret:
+            secretName: headplane-secrets
+        - name: data
+          persistentVolumeClaim:
+            claimName: headplane-data-iscsi

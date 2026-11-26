@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: truenas-csi-config
+  namespace: truenas-csi
+data:
+  truenasURL: "wss://10.0.14.10"
+  truenasInsecure: "true" # I use self-signed cert on TrueNAS
+  defaultPool: "wd_green_pool"
+  nfsServer: "10.0.14.10"
+  iscsiPortal: "10.0.14.10:3260"

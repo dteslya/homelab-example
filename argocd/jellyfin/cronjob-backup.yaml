@@ -1,0 +1,74 @@
+# Nightly copy of Jellyfin's DB (users, watch state, libraries), XML
+# config and plugin settings (jellyfin.tar.gz). Metadata, cache and
+# transcodes are left out: a library scan regenerates them.
+# Writes the backups dataset (see README), always under the same filename:
+# the B2 bucket keeps prior versions. Runs before the TrueNAS Cloud Sync push
+# at 03:00.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: jellyfin-backup
+  namespace: media
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # Gives up if Jellyfin isn't running, so the pod can't sit Pending forever
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          # Same node as Jellyfin: the config PVC is an RWO iSCSI volume, which
+          # attaches to one node at a time
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: jellyfin
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          containers:
+            - name: backup
+              image: keinos/sqlite3:3.54.1
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  mkdir -p /tmp/out
+                  cd /config
+                  tar cf - \
+                    --exclude=./cache --exclude=./.cache --exclude=./log \
+                    --exclude=./data/metadata --exclude=./data/transcodes \
+                    --exclude=./data/data/SQLiteBackups --exclude='./data/data/jellyfin.db*' \
+                    . | tar xf - -C /tmp/out
+                  # .backup takes a consistent copy of the live WAL-mode DB
+                  sqlite3 /config/data/data/jellyfin.db ".backup /tmp/out/data/data/jellyfin.db"
+                  tar czf /backups/jellyfin.tar.gz.tmp -C /tmp/out .
+                  mv /backups/jellyfin.tar.gz.tmp /backups/jellyfin.tar.gz
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                - name: backups
+                  mountPath: /backups
+                  subPath: jellyfin
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: config
+              persistentVolumeClaim:
+                claimName: jellyfin-config-iscsi
+            - name: backups
+              persistentVolumeClaim:
+                claimName: backups

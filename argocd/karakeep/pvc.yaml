@@ -1,0 +1,31 @@
+# The SQLite DBs (db.db, queue.db) on block storage (ext4 on iSCSI), so
+# locking works normally. Assets stay in the documents dataset (ASSETS_DIR),
+# where the B2 Cloud Sync covers them.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: karakeep-data
+  namespace: documents
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: truenas-iscsi-config
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Meilisearch's LMDB on block storage (ext4 on iSCSI), so the pod isn't
+# pinned to one node. The index can be rebuilt from the DB (Admin →
+# Background jobs → Reindex), so it isn't backed up.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: karakeep-meilisearch-iscsi
+  namespace: documents
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: truenas-iscsi-config
+  resources:
+    requests:
+      storage: 1Gi

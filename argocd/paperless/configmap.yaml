@@ -1,0 +1,43 @@
+# Shared by the paperless Deployment and the export CronJob
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: paperless-env
+  namespace: documents
+data:
+  PAPERLESS_URL: https://paperless.lab.example.com
+  # Since 3.5 only these Host headers are accepted. The service name is for
+  # Homepage, Gatus and the probes (which send it explicitly, see deployment)
+  PAPERLESS_ALLOWED_HOSTS: paperless.lab.example.com,paperless.documents.svc.cluster.local
+  PAPERLESS_TIME_ZONE: Etc/UTC
+  PAPERLESS_OCR_LANGUAGES: rus kat
+  PAPERLESS_OCR_LANGUAGE: rus+kat+eng
+  # Readable paths in media/ and in the export, which the Mac mirrors to iCloud
+  # Drive. After changing it, run document_renamer to move existing files.
+  PAPERLESS_FILENAME_FORMAT: "{{ created_year }}/{{ document_type }}/{{ title }}"
+  USERMAP_UID: "1000"
+  USERMAP_GID: "1000"
+  PAPERLESS_DBENGINE: postgresql
+  PAPERLESS_DBHOST: paperless-postgres
+  PAPERLESS_DBUSER: paperless
+  PAPERLESS_DBNAME: paperless
+  PAPERLESS_REDIS: redis://paperless-valkey:6379
+  PAPERLESS_TIKA_ENABLED: "true"
+  PAPERLESS_TIKA_ENDPOINT: http://paperless-tika:9998
+  PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://paperless-gotenberg:3000
+  # Envoy is the only hop in X-Forwarded-For; without this allauth's login
+  # rate limiting can't determine the client IP and returns 403
+  PAPERLESS_ALLAUTH_TRUSTED_PROXY_COUNT: "1"
+  # Pocket ID login. The provider JSON (with the client secret) comes from the
+  # paperless-oidc secret. Groups from Pocket ID's groups claim are synced into
+  # existing Paperless groups of the same name; the local login form stays as
+  # break-glass.
+  PAPERLESS_APPS: allauth.socialaccount.providers.openid_connect
+  PAPERLESS_SOCIAL_AUTO_SIGNUP: "true"
+  PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS: "true"
+  PAPERLESS_ACCOUNT_ALLOW_SIGNUPS: "false"
+  PAPERLESS_SOCIAL_ACCOUNT_SYNC_GROUPS: "true"
+  # Outgoing mail (password resets, sending documents) via the lab relay
+  PAPERLESS_EMAIL_HOST: smtp-relay.mail.svc.cluster.local
+  PAPERLESS_EMAIL_PORT: "25"
+  PAPERLESS_EMAIL_FROM: paperless@lab.example.com

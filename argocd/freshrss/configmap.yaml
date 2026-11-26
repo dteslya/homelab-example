@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: freshrss-env
+  namespace: documents
+data:
+  TZ: Etc/UTC
+  # Built-in cron refreshes all feeds at these minutes
+  CRON_MIN: "*/20"
+  # Pocket ID login for the web UI (/i/). The API (/api/) used by mobile apps
+  # isn't behind OIDC and uses per-user API passwords instead. Client ID,
+  # secret and crypto key come from the freshrss-oidc secret.
+  OIDC_ENABLED: "1"
+  OIDC_PROVIDER_METADATA_URL: https://id.lab.example.com/.well-known/openid-configuration
+  OIDC_SCOPES: openid email profile
+  OIDC_REMOTE_USER_CLAIM: preferred_username
+  # Envoy keeps the Host header and sets X-Forwarded-Proto: https
+  OIDC_X_FORWARDED_HEADERS: X-Forwarded-Proto

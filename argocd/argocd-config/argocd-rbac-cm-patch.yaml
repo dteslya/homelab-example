@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+data:
+  # The Pocket ID client is already restricted to the admins group; this maps
+  # that group to full admin and gives everyone else nothing.
+  scopes: "[groups]"
+  policy.default: ""
+  policy.csv: |
+    g, admins, role:admin

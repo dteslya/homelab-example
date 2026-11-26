@@ -1,0 +1,16 @@
+---
+# One-time, on a fresh host: connect as server_bootstrap_user and set up the
+# admin user. Run playbooks/server_hardening.yml right after.
+#   VPS (root with the provider's password; hardening turns root login off,
+#   so this can't run again on the same host):
+#     ansible-playbook playbooks/server_bootstrap.yml -l vps -k
+#   Incus host (the user the Ubuntu installer created):
+#     ansible-playbook playbooks/server_bootstrap.yml -l ser8 -k -K
+- name: Bootstrap the server admin user
+  hosts: servers
+  gather_facts: false
+  vars:
+    ansible_user: "{{ server_bootstrap_user | default('root') }}"
+  become: "{{ (server_bootstrap_user | default('root')) != 'root' }}"
+  roles:
+    - server_bootstrap

@@ -1,0 +1,4 @@
+---
+# HPE Instant On switches in local (web) management mode. Backed up by playbooks/backup.yml.
+instanton_user: admin
+instanton_password: "{{ vault_instanton_password }}"

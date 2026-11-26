@@ -1,0 +1,405 @@
+# Gatus: availability checks for the lab plus heartbeats pushed by TrueNAS
+# Cloud Sync tasks. Environment variables in this file come from the
+# gatus-secrets SealedSecret.
+storage:
+  type: sqlite
+  path: /data/data.db
+
+ui:
+  title: Homelab status
+  header: Homelab status
+
+# Pocket ID SSO (gatus client, admins only). The heartbeat push API
+# (/api/v1/endpoints/*/external) sits outside OIDC and only checks the bearer token.
+security:
+  oidc:
+    issuer-url: https://id.lab.example.com
+    redirect-url: https://status.lab.example.com/authorization-code/callback
+    client-id: ${OIDC_CLIENT_ID}
+    client-secret: ${OIDC_CLIENT_SECRET}
+    scopes: ["openid"]
+
+# Plain SMTP to the in-cluster relay: no password means no AUTH, and the relay
+# rewrites the sender to the iCloud address anyway.
+alerting:
+  email:
+    from: gatus@lab.example.com
+    host: smtp-relay.mail.svc.cluster.local
+    port: 25
+    to: ${ALERT_EMAIL}
+    default-alert:
+      failure-threshold: 3
+      success-threshold: 2
+      send-on-resolved: true
+
+x-app: &app
+  interval: 1m
+  alerts:
+    - type: email
+
+# Through Envoy Gateway: tests DNS, the route and the cert-manager certificate.
+# Redirects aren't followed, so SSO-protected routes count as up on the 302.
+x-gateway: &gateway
+  group: gateway
+  interval: 5m
+  client:
+    ignore-redirect: true
+  conditions:
+    - "[STATUS] < 400"
+    - "[CERTIFICATE_EXPIRATION] > 336h" # cert-manager renews 30 days out
+  alerts:
+    - type: email
+
+# Hosted outside the lab: each app's public health endpoint and its certificate.
+x-external: &external
+  group: external
+  interval: 5m
+  alerts:
+    - type: email
+
+# LuCI on each router: uhttpd plus the Let's Encrypt cert it actually serves
+# (catches a renewal whose cert never reached uhttpd). Names are resolved via
+# gw's dnsmasq, see dns-gw.
+x-luci: &luci
+  group: openwrt
+  interval: 5m
+  client:
+    ignore-redirect: true
+    dns-resolver: udp://10.0.4.1:53
+  conditions:
+    - "[STATUS] < 400"
+    - "[CERTIFICATE_EXPIRATION] > 336h" # acme.sh renews 60 days out
+  alerts:
+    - type: email
+
+endpoints:
+  # --- Apps, in-cluster ---
+  - name: jellyfin
+    group: media
+    url: http://jellyfin.media.svc.cluster.local:8096/health
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: seerr
+    group: media
+    url: http://seerr.media.svc.cluster.local:5055/api/v1/status
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: bookorbit
+    group: media
+    url: http://bookorbit.media.svc.cluster.local:3000/
+    conditions: ["[STATUS] < 400"]
+    <<: *app
+  - name: sonarr
+    group: media
+    url: http://sonarr.media.svc.cluster.local:8989/ping
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: radarr
+    group: media
+    url: http://radarr.media.svc.cluster.local:7878/ping
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: prowlarr
+    group: media
+    url: http://prowlarr.media.svc.cluster.local:9696/ping
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: bazarr
+    group: media
+    url: http://bazarr.media.svc.cluster.local:6767/
+    conditions: ["[STATUS] < 400"]
+    <<: *app
+  - name: qbittorrent
+    group: media
+    url: http://qbittorrent.media.svc.cluster.local:8080/
+    conditions: ["[STATUS] < 400"]
+    <<: *app
+  - name: sabnzbd
+    group: media
+    url: http://sabnzbd.media.svc.cluster.local:8080/
+    conditions: ["[STATUS] < 400"]
+    <<: *app
+  - name: slskd
+    group: media
+    url: http://slskd.media.svc.cluster.local:5030/health
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: beets
+    group: media
+    url: http://beets.media.svc.cluster.local:8337/
+    conditions: ["[STATUS] < 400"]
+    <<: *app
+  - name: filebrowser
+    group: media
+    url: http://filebrowser.media.svc.cluster.local/health
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: metube
+    group: media
+    url: http://metube.media.svc.cluster.local:8081/
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: bentopdf
+    group: media
+    url: http://bentopdf.media.svc.cluster.local:8080/
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: immich
+    group: photos
+    url: http://immich-server.photos.svc.cluster.local:2283/api/server/ping
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: icloudpd-bob
+    group: photos
+    url: http://icloudpd-bob.photos.svc.cluster.local:8080/
+    conditions: ["[STATUS] < 400"]
+    <<: *app
+  - name: icloudpd-alice
+    group: photos
+    url: http://icloudpd-alice.photos.svc.cluster.local:8080/
+    conditions: ["[STATUS] < 400"]
+    <<: *app
+  - name: paperless
+    group: documents
+    url: http://paperless.documents.svc.cluster.local:8000/
+    conditions: ["[STATUS] < 400"]
+    <<: *app
+  - name: karakeep
+    group: documents
+    url: http://karakeep.documents.svc.cluster.local:3000/api/health
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: vikunja
+    group: documents
+    url: http://vikunja.documents.svc.cluster.local:3456/health
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: freshrss
+    group: documents
+    url: http://freshrss.documents.svc.cluster.local/api/  # not behind OIDC
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+
+  # --- Infrastructure ---
+  - name: pocket-id
+    group: infrastructure
+    url: http://pocket-id.pocket-id.svc.cluster.local:1411/healthz
+    conditions: ["[STATUS] == 204"]  # /healthz replies 204 No Content
+    <<: *app
+  - name: headplane
+    group: infrastructure
+    url: http://headplane.headplane.svc.cluster.local:3000/admin/healthz  # also checks that headscale is reachable
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].status == OK"
+    <<: *app
+  - name: argocd
+    group: infrastructure
+    url: http://argocd-server.argocd.svc.cluster.local/healthz
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: grafana
+    group: infrastructure
+    url: http://grafana.monitoring.svc.cluster.local/api/health
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: victoria-metrics
+    group: infrastructure
+    url: http://victoria-metrics.monitoring.svc.cluster.local:8428/health
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: smtp-relay
+    group: infrastructure
+    url: tcp://smtp-relay.mail.svc.cluster.local:25
+    conditions: ["[CONNECTED] == true"]
+    <<: *app
+  - name: truenas
+    group: infrastructure
+    url: https://truenas.lab.example.com/
+    interval: 1m
+    client:
+      ignore-redirect: true
+    conditions:
+      - "[STATUS] < 400"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    alerts:
+      - type: email
+  - name: ups
+    group: infrastructure
+    url: tcp://10.0.15.20:3551
+    conditions: ["[CONNECTED] == true"]
+    <<: *app
+  # Incus host ser8: node-exporter installed by ansible/ (playbooks/incus.yml).
+  - name: exporter-ser8
+    group: infrastructure
+    url: http://10.0.15.20:9100/metrics
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+
+  # --- OpenWrt routers (ansible/) ---
+  - name: exporter-gw
+    group: openwrt
+    url: http://10.0.15.1:9100/metrics
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: exporter-ap1
+    group: openwrt
+    url: http://10.0.15.11:9100/metrics
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  - name: exporter-ap2
+    group: openwrt
+    url: http://10.0.15.12:9100/metrics
+    conditions: ["[STATUS] == 200"]
+    <<: *app
+  # gw's dnsmasq is the only resolver for <host>.lab.example.com -> mgmt IP
+  # (public DNS has a wildcard pointing at Envoy); the LuCI checks rely on it.
+  - name: dns-gw
+    group: openwrt
+    url: 10.0.4.1
+    dns:
+      query-name: gw.lab.example.com
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == 10.0.15.1"
+    <<: *app
+  - { name: luci-gw, url: "https://gw.lab.example.com/", <<: *luci }
+  - { name: luci-ap1, url: "https://ap1.lab.example.com/", <<: *luci }
+  - { name: luci-ap2, url: "https://ap2.lab.example.com/", <<: *luci }
+  # Instant On switch sw1 (ansible/ backups only): web UI over HTTP, name from gw's dnsmasq.
+  - name: web-sw1
+    group: infrastructure
+    url: http://sw1.lab.example.com/
+    client:
+      ignore-redirect: true
+      dns-resolver: udp://10.0.4.1:53
+    conditions: ["[STATUS] < 400"]
+    <<: *app
+
+  # --- Internet (WAN uplink): IP, DNS and HTTPS checked separately ---
+  # Alert emails go out through iCloud, so they arrive once the uplink is back.
+  - name: ping-cloudflare
+    group: internet
+    url: icmp://1.1.1.1
+    conditions: ["[CONNECTED] == true"]
+    <<: *app
+  - name: ping-google
+    group: internet
+    url: icmp://8.8.8.8
+    conditions: ["[CONNECTED] == true"]
+    <<: *app
+  # Public name through gw's dnsmasq, i.e. its upstream forwarding.
+  - name: dns-upstream
+    group: internet
+    url: 10.0.4.1
+    dns:
+      query-name: one.one.one.one
+      query-type: A
+    conditions: ["[DNS_RCODE] == NOERROR"]
+    <<: *app
+  - name: https-google
+    group: internet
+    url: https://www.google.com/generate_204
+    conditions: ["[STATUS] == 204"]
+    <<: *app
+
+  # --- External (hosted outside the lab) ---
+  - name: vaultwarden
+    url: https://vw.example.com/alive  # 200 with a JSON timestamp
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    <<: *external
+  - name: actual
+    url: https://actual.example.com/health
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].status == UP"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    <<: *external
+  - name: headscale
+    url: https://vpn.example.com/health  # also checks the database
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].status == pass"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    <<: *external
+  - name: blog
+    url: https://example.com/blog/  # Netlify; the root is only a JS redirect page
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    <<: *external
+
+  # --- Gateway (one per HTTPRoute hostname) ---
+  - { name: argocd, url: "https://argocd.lab.example.com/", <<: *gateway }
+  - { name: bazarr, url: "https://bazarr.lab.example.com/", <<: *gateway }
+  - { name: beets, url: "https://beets.lab.example.com/", <<: *gateway }
+  - { name: bookmarks, url: "https://bookmarks.lab.example.com/", <<: *gateway }
+  - { name: books, url: "https://books.lab.example.com/", <<: *gateway }
+  - { name: filebrowser, url: "https://filebrowser.lab.example.com/", <<: *gateway }
+  - { name: grafana, url: "https://grafana.lab.example.com/", <<: *gateway }
+  - { name: headplane, url: "https://headplane.lab.example.com/", <<: *gateway }
+  - { name: homepage, url: "https://homepage.lab.example.com/", <<: *gateway }
+  - { name: icloudpd-alice, url: "https://icloudpd-alice.lab.example.com/", <<: *gateway }
+  - { name: icloudpd-bob, url: "https://icloudpd-bob.lab.example.com/", <<: *gateway }
+  - { name: id, url: "https://id.lab.example.com/", <<: *gateway }
+  - { name: jellyfin, url: "https://jellyfin.lab.example.com/", <<: *gateway }
+  - { name: metube, url: "https://metube.lab.example.com/", <<: *gateway }
+  - { name: paperless, url: "https://paperless.lab.example.com/", <<: *gateway }
+  - { name: pdf, url: "https://pdf.lab.example.com/", <<: *gateway }
+  - { name: photos, url: "https://photos.lab.example.com/", <<: *gateway }
+  - { name: prowlarr, url: "https://prowlarr.lab.example.com/", <<: *gateway }
+  - { name: qbittorrent, url: "https://qbittorrent.lab.example.com/", <<: *gateway }
+  - { name: radarr, url: "https://radarr.lab.example.com/", <<: *gateway }
+  - { name: sabnzbd, url: "https://sabnzbd.lab.example.com/", <<: *gateway }
+  - { name: seerr, url: "https://seerr.lab.example.com/", <<: *gateway }
+  - { name: slskd, url: "https://slskd.lab.example.com/", <<: *gateway }
+  - { name: sonarr, url: "https://sonarr.lab.example.com/", <<: *gateway }
+  - { name: status, url: "https://status.lab.example.com/", <<: *gateway }
+  - { name: tasks, url: "https://tasks.lab.example.com/", <<: *gateway }
+
+# Pushed by each TrueNAS Cloud Sync task's post-script (see README). A failed
+# sync never runs the post-script, so a missed 26h heartbeat raises the alert.
+# Push URL: /api/v1/endpoints/backups_<name>/external?success=true
+x-backup: &backup
+  group: backups
+  token: ${HEARTBEAT_TOKEN}
+  heartbeat:
+    interval: 26h
+  alerts:
+    - type: email
+      failure-threshold: 1
+
+# Pushed by each OpenWrt router's acme hotplug hook (ansible openwrt_config role):
+# success=true on issue/renewal, success=false on a failed run. A run that isn't
+# due yet pushes nothing; acme.sh renews ~every 30 days, so 35 days of silence
+# means renewals have stopped. Push URL: /api/v1/endpoints/openwrt_acme-<host>/external
+x-acme: &acme
+  group: openwrt
+  token: ${HEARTBEAT_TOKEN}
+  heartbeat:
+    interval: 840h
+  alerts:
+    - type: email
+      failure-threshold: 1
+
+external-endpoints:
+  - { name: photos-b2, <<: *backup }
+  - { name: books-b2, <<: *backup }
+  - { name: documents-b2, <<: *backup }
+  - { name: services-b2, <<: *backup }
+  # Pushed by /etc/hotplug.d/acme/20-gatus on each router after an ACME run.
+  - { name: acme-gw, <<: *acme }
+  - { name: acme-ap1, <<: *acme }
+  - { name: acme-ap2, <<: *acme }
+  # Pushed by the daily b2-size CronJob in monitoring-config
+  - name: b2-size
+    group: backups
+    token: ${HEARTBEAT_TOKEN}
+    heartbeat:
+      interval: 26h
+    alerts:
+      - type: email
+        failure-threshold: 1

@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: icloudpd-alice
+  namespace: photos
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: icloudpd-alice
+  template:
+    metadata:
+      labels:
+        app: icloudpd-alice
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: icloudpd
+          # https://github.com/icloud-photos-downloader/icloud_photos_downloader/releases
+          image: icloudpd/icloudpd:1.34.0
+          # Password and MFA code are entered in the web UI (see README). The
+          # session token is persisted in /config, so restarts don't need them
+          # again until Apple expires the session (~every 2 months).
+          args:
+            - icloudpd
+            - --username
+            - $(ICLOUD_USERNAME)
+            - --directory
+            - /data
+            - --cookie-directory
+            - /config
+            - --folder-structure
+            - "{:%Y/%m}"
+            - --password-provider
+            - webui
+            - --mfa-provider
+            - webui
+            - --watch-with-interval
+            - "21600"
+            - --no-progress-bar
+          env:
+            - name: TZ
+              value: "Etc/UTC"
+            - name: ICLOUD_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: icloudpd-secrets
+                  key: alice-username
+          ports:
+            - name: webui
+              containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: photos-library
+              mountPath: /data
+              subPath: icloud/alice
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: icloudpd-alice-config
+        - name: photos-library
+          persistentVolumeClaim:
+            claimName: photos-library

@@ -1,0 +1,67 @@
+# Nightly copy of Radarr's DB and config.xml (radarr.tar.gz).
+# Writes the backups dataset (see README), always under the same filename:
+# the B2 bucket keeps prior versions. Runs before the TrueNAS Cloud Sync push
+# at 03:00.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: radarr-backup
+  namespace: media
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # Gives up if Radarr isn't running, so the pod can't sit Pending forever
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          # Same node as Radarr: the config PVC is an RWO iSCSI volume, which
+          # attaches to one node at a time
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: radarr
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          containers:
+            - name: backup
+              image: keinos/sqlite3:3.54.1
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  mkdir -p /tmp/out
+                  # .backup takes a consistent copy of the live WAL-mode DB
+                  sqlite3 /config/radarr.db ".backup /tmp/out/radarr.db"
+                  cp /config/config.xml /tmp/out/
+                  tar czf /backups/radarr.tar.gz.tmp -C /tmp/out .
+                  mv /backups/radarr.tar.gz.tmp /backups/radarr.tar.gz
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                - name: backups
+                  mountPath: /backups
+                  subPath: radarr
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: config
+              persistentVolumeClaim:
+                claimName: radarr-config-iscsi
+            - name: backups
+              persistentVolumeClaim:
+                claimName: backups

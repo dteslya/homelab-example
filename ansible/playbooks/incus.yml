@@ -1,0 +1,10 @@
+---
+# Re-runnable. Run after server_bootstrap.yml and server_hardening.yml.
+#   ansible-playbook playbooks/incus.yml -K --check --diff
+- name: Configure the Incus host
+  hosts: incus
+  become: true
+  roles:
+    - incus
+    - apcupsd
+    - node_exporter

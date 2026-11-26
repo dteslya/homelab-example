@@ -1,0 +1,94 @@
+# Nightly dump of the controller's key pairs into the backups dataset as
+# sealed-secrets-keys.yaml. Without them no secret.yaml in this repo can be
+# decrypted after a rebuild, and the controller adds a new key every 30 days,
+# so this runs on a schedule. Plain YAML on purpose: anyone who can read the
+# dataset already has root on TrueNAS or the cluster, and B2 only ever sees it
+# through Cloud Sync's remote encryption. Runs before the 03:00 Cloud Sync push.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sealed-secrets-backup
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sealed-secrets-backup
+  namespace: kube-system
+rules:
+  # list can't be narrowed by label in RBAC; the job filters by label itself
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sealed-secrets-backup
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sealed-secrets-backup
+subjects:
+  - kind: ServiceAccount
+    name: sealed-secrets-backup
+    namespace: kube-system
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sealed-secrets-backup
+  namespace: kube-system
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: sealed-secrets-backup
+          containers:
+            - name: dump
+              image: alpine/kubectl:1.37.2
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  umask 077
+                  # Only name, type, label and data: no resourceVersion/uid, so the
+                  # file applies cleanly to a fresh cluster
+                  kubectl -n kube-system get secret \
+                    -l sealedsecrets.bitnami.com/sealed-secrets-key \
+                    -o go-template --template '{{range .items}}---
+                  apiVersion: v1
+                  kind: Secret
+                  type: {{.type}}
+                  metadata:
+                    name: {{.metadata.name}}
+                    namespace: kube-system
+                    labels:
+                      sealedsecrets.bitnami.com/sealed-secrets-key: active
+                  data:
+                  {{range $k, $v := .data}}  {{$k}}: {{$v}}
+                  {{end}}{{end}}' > /backups/sealed-secrets-keys.yaml.tmp
+                  grep -q 'tls.key:' /backups/sealed-secrets-keys.yaml.tmp
+                  mv /backups/sealed-secrets-keys.yaml.tmp /backups/sealed-secrets-keys.yaml
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: backups

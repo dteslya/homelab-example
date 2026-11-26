@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: documents-folder-init
+  namespace: documents
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: init-folders
+          image: busybox@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /data/data /data/media /data/export /data/consume
+              chown 1000:1000 /data/data /data/media /data/export /data/consume
+              # Karakeep runs as root, so its folders stay root-owned
+              mkdir -p /data/karakeep /data/karakeep-backups
+              # Vikunja runs as 1000 (its DB is on its own PVC)
+              mkdir -p /data/vikunja/files /data/vikunja-backups
+              chown 1000:1000 /data/vikunja /data/vikunja/files /data/vikunja-backups
+              # FreshRSS backups are written by a root job (data is on its own PVC)
+              mkdir -p /data/freshrss-backups
+          volumeMounts:
+            - name: documents-library
+              mountPath: /data
+      volumes:
+        - name: documents-library
+          persistentVolumeClaim:
+            claimName: documents-library

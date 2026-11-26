@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+{
+	email {{ letsencrypt_email | default('admin@' + cloudflare_zone) }}
+}
+
+{{ headscale_domain }} {
+	tls {
+		dns cloudflare {env.CF_API_TOKEN}
+	}
+
+	reverse_proxy 127.0.0.1:{{ headscale_listen_addr.split(':')[-1] }} {
+		# headscale needs the real client IP and to know it's HTTPS,
+		# since headscale trusts these via trusted_proxies.
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	encode gzip
+}

@@ -1,0 +1,17 @@
+{% from '_uci.j2' import section %}
+{{ section('interface', 'loopback', {'device': 'lo', 'proto': 'static', 'ipaddr': '127.0.0.1', 'netmask': '255.0.0.0'}) -}}
+{{ section('globals', 'globals', {'packet_steering': true, 'ula_prefix': openwrt_ula_prefix, 'dhcp_default_duid': openwrt_dhcp_default_duid}) -}}
+{{ section('device', none, {'name': 'br-lan', 'type': 'bridge', 'ports': openwrt_bridge_ports,
+    'bridge_empty': openwrt_bridge_empty | default(none), 'ipv6': openwrt_bridge_ipv6 | default(none)}) -}}
+{{ section('interface', 'lan', {'device': 'br-lan', 'proto': 'static', 'ip6assign': 60, 'ipv6': false}) -}}
+{{ section('device', none, {'name': 'wan', 'ipv6': false}) -}}
+{% for v in openwrt_bridge_vlans %}
+{{ section('device', none, {'type': '8021q', 'ifname': 'br-lan', 'vid': v.vid, 'name': 'br-lan.' ~ v.vid, 'ipv6': v.ipv6 | default(none)}) -}}
+{{ section('bridge-vlan', none, {'device': 'br-lan', 'vlan': v.vid, 'ports': v.ports}) -}}
+{% endfor %}
+{% for i in openwrt_vlan_interfaces %}
+{{ section('interface', i.name | default('vlan' ~ i.vid), {'proto': 'static', 'device': 'br-lan.' ~ i.vid,
+    'ipaddr': i.ipaddr | default(none), 'netmask': (i.netmask | default('255.255.255.0')) if i.ipaddr is defined else none,
+    'gateway': i.gateway | default(none), 'dns': i.dns | default(none)}) -}}
+{% endfor %}
+{{ "\n" }}

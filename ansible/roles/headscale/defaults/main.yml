@@ -1,0 +1,47 @@
+---
+# Public IPv4 of the VPS, used for the Cloudflare A record. Defaults to the
+# inventory ansible_host, which works as long as that is the public IP.
+headscale_public_ip: "{{ ansible_host | default(inventory_hostname) }}"
+
+# --- headscale ---
+headscale_version: "0.29.7"
+headscale_arch: "amd64"
+
+headscale_listen_addr: "127.0.0.1:8080"
+headscale_metrics_listen_addr: "127.0.0.1:9090"
+headscale_grpc_listen_addr: "127.0.0.1:50443"
+
+# A user created automatically for your devices (idempotent).
+headscale_default_user: "homelab"
+
+# Embedded DERP relay. For homelab access you almost never need this -
+# Tailscale's public DERP servers work fine and NAT traversal will mostly
+# negotiate direct connections anyway. Leave off unless you have a specific
+# reason (e.g. strict egress filtering).
+headscale_embedded_derp_enabled: false
+
+# --- access policy ---
+# When true, policy.hujson.j2 is deployed and referenced from headscale's
+# config, enabling tag-based auto-approval of subnet routes.
+# Default false: no policy is loaded at all, headscale allows all traffic
+# between nodes, and routes are approved manually (see README). This
+# sidesteps headscale's tag/ACL registration bugs entirely - reasonable
+# for a single-user homelab tailnet.
+headscale_manage_policy: false
+
+# Subnet routes advertised by homelab nodes that should be auto-approved
+# (only with headscale_manage_policy). A node that wants a route
+# auto-approved must join with --advertise-tags tag:router and
+# --advertise-routes matching one of these CIDRs.
+headscale_subnet_routes: []
+
+# Tag used to gate auto-approval of the routes above (see policy.hujson.j2).
+headscale_route_approver_tag: "tag:router"
+
+# --- caddy ---
+# Caddy is fetched from caddyserver.com's build server, which always builds
+# the latest release - there is no way to pin a version. The binary is
+# downloaded once; to upgrade to the current latest, re-run with
+#   ansible-playbook playbooks/headscale.yml -e caddy_upgrade=true
+caddy_upgrade: false
+caddy_arch: "amd64"

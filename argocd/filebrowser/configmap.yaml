@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebrowser-config
+  namespace: media
+data:
+  config.yaml: |
+    server:
+      cacheDir: /cache
+      sources:
+        - path: /srv
+          name: media
+          config:
+            defaultEnabled: true
+    http:
+      # Envoy terminates TLS; without this the OIDC redirect_uri is built as http://
+      trustProxyHeaders: true
+    auth:
+      adminUsername: admin
+      methods:
+        # Password login stays enabled as a fallback for the local admin
+        oidc:
+          enabled: true
+          clientId: 9a3ab9e6-adfc-42d8-9eac-84b90b5229d7
+          # clientSecret comes from FILEBROWSER_OIDC_CLIENT_SECRET (filebrowser-oidc)
+          issuerUrl: https://id.lab.example.com
+          scopes: "email openid profile groups"
+          userIdentifier: preferred_username
+          adminGroup: admins

@@ -1,0 +1,77 @@
+# Nightly document_exporter run into the export/ folder of the documents
+# dataset. The export holds originals, archives and a manifest of all DB
+# metadata, so it can be restored with document_importer even if the Postgres
+# PVC is lost. Runs before the TrueNAS Cloud Sync push at 03:00.
+# Files are named by PAPERLESS_FILENAME_FORMAT and split into archive/,
+# originals/ and thumbnails/, so originals/ can be mirrored as-is to iCloud Drive.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: paperless-export
+  namespace: documents
+spec:
+  schedule: "0 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          # Kubernetes injects <SERVICE>_PORT env vars per Service, and the paperless
+          # Service would set PAPERLESS_PORT=tcp://<ip>:8000, which Paperless reads as
+          # its listen port. Everything here uses DNS names, so turn them off.
+          enableServiceLinks: false
+          # Run manage.py directly as the paperless user (uid 1000): the image's
+          # /init entrypoint would also start the webserver, consumer and workers.
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          containers:
+            - name: export
+              image: ghcr.io/paperless-ngx/paperless-ngx:3.5.1
+              workingDir: /usr/src/paperless/src
+              command:
+                - python3
+                - manage.py
+                - document_exporter
+                - /usr/src/paperless/export
+                - --delete
+                - --use-filename-format
+                - --use-folder-prefix
+                - --no-progress-bar
+              envFrom:
+                - configMapRef:
+                    name: paperless-env
+                - secretRef:
+                    name: paperless-secrets
+                - secretRef:
+                    name: paperless-oidc
+                    optional: true
+              env:
+                # Extra OCR language packs are installed by /init, which this job
+                # skips; the exporter doesn't OCR, so avoid failing the system check
+                - name: PAPERLESS_OCR_LANGUAGE
+                  value: eng
+              volumeMounts:
+                - name: documents-library
+                  mountPath: /usr/src/paperless/data
+                  subPath: data
+                - name: documents-library
+                  mountPath: /usr/src/paperless/media
+                  subPath: media
+                - name: documents-library
+                  mountPath: /usr/src/paperless/export
+                  subPath: export
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi
+          volumes:
+            - name: documents-library
+              persistentVolumeClaim:
+                claimName: documents-library

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "dependencyDashboard": {
+    "enabled": true
+  },
+  "dependencyDashboardApproval": true,
+  "semanticCommits": "enabled",
+  "ignorePaths": [
+    "argocd/argocd-config/argocd-ha-base.yaml",
+    "bootstrap/argocd-installer.yaml",
+    "publish/**"
+  ],
+  "kubernetes": {
+    "managerFilePatterns": ["/^argocd/.+\\.ya?ml$/"]
+  },
+  "argocd": {
+    "managerFilePatterns": ["/^argocd/apps/.+\\.ya?ml$/"]
+  },
+  "customManagers": [
+    {
+      "description": "Tag-pinned GitHub URLs in kustomization resources",
+      "customType": "regex",
+      "managerFilePatterns": ["/^argocd/.+/kustomization\\.yaml$/"],
+      "matchStrings": [
+        "https://raw\\.githubusercontent\\.com/(?<depName>[^/]+/[^/]+)/(?<currentValue>v[^/]+)/",
+        "https://github\\.com/(?<depName>[^/]+/[^/]+)/releases/download/(?<currentValue>v[^/]+)/"
+      ],
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "description": "headscale .deb installed by the Ansible headscale role",
+      "customType": "regex",
+      "managerFilePatterns": ["/^ansible/roles/headscale/defaults/main\\.yml$/"],
+      "matchStrings": ["headscale_version: \"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "juanfont/headscale",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "description": "Talos version default and example",
+      "customType": "regex",
+      "managerFilePatterns": ["/^variables\\.tf$/", "/^terraform\\.tfvars\\.example$/"],
+      "matchStrings": [
+        "variable \"talos_version\" \\{[^}]*?default\\s*=\\s*\"(?<currentValue>v[^\"]+)\"",
+        "talos_version\\s*=\\s*\"(?<currentValue>v[^\"]+)\""
+      ],
+      "depNameTemplate": "siderolabs/talos",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "description": "Tool versions pinned with a renovate comment in GitHub workflows",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+\\w+:\\s*\"?(?<currentValue>[^\"\\s]+)\"?"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "linuxserver tags: 4.0.20.3014-ls1, v1.6.0-ls356, 5.1.3-ls278",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["lscr.io/linuxserver/**"],
+      "versioning": "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:\\.(?<build>\\d+))?-ls(?<revision>\\d+)$"
+    },
+    {
+      "description": "linuxserver qbittorrent: 5.2.3_v2.0.13-ls469 (qBittorrent version, libtorrent version, ls build)",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["lscr.io/linuxserver/qbittorrent"],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)_v[\\d.]+-ls(?<revision>\\d+)$"
+    },
+    {
+      "description": "linuxserver jellyfin: 12.1ubu2604-ls51",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["lscr.io/linuxserver/jellyfin"],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)(?:\\.(?<patch>\\d+))?(?<compatibility>ubu\\d+)-ls(?<revision>\\d+)$"
+    },
+    {
+      "description": "Floating or unversionable tags (latest, stable, untagged, pg18): pin to a digest so changes show up as digest updates",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/gtsteffaniak/filebrowser", "busybox", "pgvector/pgvector"],
+      "pinDigests": true
+    },
+    {
+      "description": "Group digest pins and digest updates into one dashboard entry",
+      "matchUpdateTypes": ["pin", "digest"],
+      "groupName": "digest pins"
+    },
+    {
+      "description": "Immich chooses its Postgres image; a Postgres major needs a dump/restore, so follow Immich release notes instead",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/immich-app/postgres"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Paperless's upstream compose chooses its Postgres major; a major needs a dump/restore, so follow upstream instead",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["docker.io/library/postgres"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "truenas-csi: the deploy manifest URL and the driver image tag pinned in kustomization.yaml must move together",
+      "matchPackageNames": ["truenas/truenas-csi", "ghcr.io/truenas/truenas-csi"],
+      "groupName": "truenas-csi"
+    },
+    {
+      "description": "Karakeep pins Meilisearch in its docker-compose.yml; the on-disk DB format is version-locked, so bump it only together with Karakeep",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["docker.io/getmeili/meilisearch"],
+      "enabled": false
+    },
+    {
+      "description": "Talos changes need an image import and talosctl upgrade; Terraform only owns the initial config",
+      "matchDepNames": ["siderolabs/talos"],
+      "prBodyNotes": [
+        "Import the image first (`./scripts/import-talos-image.sh --version {{newVersion}}`), then upgrade the nodes with `talosctl upgrade`. Terraform ignores user-data changes after bootstrap."
+      ]
+    }
+  ]
+}

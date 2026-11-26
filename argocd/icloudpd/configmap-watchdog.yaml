@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: icloudpd-watchdog
+  namespace: photos
+data:
+  watchdog.sh: |
+    #!/bin/sh
+    # Emails each account owner when their icloudpd instance is waiting for a
+    # password or MFA code in the web UI (or is unreachable). icloudpd's own
+    # --smtp-* notification can't do this: it only fires after the password step.
+    set -u
+    FROM=icloudpd-watchdog@lab.example.com
+    rc=0
+
+    notify() { # $1=to $2=subject $3=body
+      printf 'From: icloudpd watchdog <%s>\nTo: %s\nSubject: %s\nDate: %s\nMessage-ID: <%s.%s@lab.example.com>\n\n%s\n' \
+        "$FROM" "$1" "$2" "$(date -R)" "$(date +%s)" "$RANDOM" "$3" |
+        sendmail -S "$SMTP_RELAY" -f "$FROM" "$1" || { echo "  failed to send mail to $1"; rc=1; }
+    }
+
+    check() { # $1=instance name $2=owner email
+      url="https://icloudpd-$1.lab.example.com"
+      if ! page=$(wget -q -T 10 -O - "http://icloudpd-$1:8080/status"); then
+        echo "$1: unreachable"
+        notify "$2" "icloudpd ($1) is down" "The icloudpd instance for $1 is not responding, so iCloud Photos are not being backed up. Check: kubectl -n photos get pods"
+        return
+      fi
+      case "$page" in
+        *'name="password"'*|*'name="code"'*)
+          echo "$1: needs login"
+          notify "$2" "icloudpd ($1) needs login" "icloudpd for $1 is waiting for a login, so iCloud Photos are not being backed up. Log in with your Apple ID password and 2FA code at $url"
+          ;;
+        *'No input is needed'*)
+          echo "$1: ok"
+          ;;
+        *)
+          # Transient states (e.g. checking a just-submitted password) - not worth an email
+          echo "$1: unexpected status page, skipping"
+          ;;
+      esac
+    }
+
+    check bob "$BOB_EMAIL"
+    check alice "$ALICE_EMAIL"
+    exit $rc

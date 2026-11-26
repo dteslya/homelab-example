@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: documents-library
+  namespace: documents
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  volumeName: documents-library
+  resources:
+    requests:
+      storage: 500Gi

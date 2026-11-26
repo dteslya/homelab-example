@@ -1,0 +1,17 @@
+# Envoy's default request (512Mi) is ~4x its real peak (~125Mi over 7 days),
+# and the cluster is short on requestable memory. Limits stay unset.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: lab-proxy
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi

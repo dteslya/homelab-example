@@ -1,0 +1,22 @@
+# Terraform state and secrets
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+backend.hcl
+terraform.tfvars
+output/
+
+# OS
+.DS_Store
+
+# env
+.envrc
+
+# Ansible
+ansible/_import/
+ansible/backups/
+ansible/build/
+ansible/collections/
+ansible/.vault_pass
+__pycache__/

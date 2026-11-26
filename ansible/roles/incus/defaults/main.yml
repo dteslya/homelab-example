@@ -1,0 +1,27 @@
+---
+# --- packages (Zabbly's builds; Ubuntu's own incus lags behind) ---
+incus_apt_uri: https://pkgs.zabbly.com/incus/stable
+incus_apt_key_url: https://pkgs.zabbly.com/key.asc
+incus_packages:
+  - incus
+
+# --- network (netplan, systemd-networkd) ---
+incus_netplan_file: /etc/netplan/01-incus.yaml
+# Other netplan files to delete, e.g. the installer's, which configures the uplink itself.
+incus_netplan_obsolete: []
+# A netplan change is rolled back unless SSH works again within this many seconds.
+incus_netplan_rollback_seconds: 180
+# NIC every bridge sits on.
+incus_uplink: enp1s0
+# Host's own address lives on this bridge, on the untagged (native) VLAN of the uplink.
+incus_mgmt_bridge: br-mgmt
+incus_mgmt_address: ""         # CIDR, e.g. 10.0.0.2/24
+incus_mgmt_gateway: ""
+incus_dns_servers: []
+# Tagged VLANs: each gets <uplink>.<id> and an address-less bridge br-vlan<id> for VMs.
+incus_vlans: []
+
+# --- incus admin init --preseed ---
+# Re-applied whenever it changes: creates missing objects and updates existing ones.
+# See `incus admin init --dump` for the format.
+incus_preseed: {}

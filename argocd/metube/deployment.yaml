@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metube
+  namespace: media
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: metube
+  template:
+    metadata:
+      labels:
+        app: metube
+    spec:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: metube
+          # https://github.com/alexta69/metube/tags — each tag bundles the
+          # current yt-dlp stable, so bump it when downloads start failing
+          image: ghcr.io/alexta69/metube:2026.11.24
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            # Keep files group-writable, like the rest of /data
+            - name: UMASK
+              value: "002"
+            - name: TZ
+              value: "Etc/UTC"
+            - name: DOWNLOAD_DIR
+              value: /data/youtube
+            # Queue/history/cookies stay out of the folder Filebrowser shows
+            - name: STATE_DIR
+              value: /config
+            # Same filesystem as DOWNLOAD_DIR, so finishing is a rename
+            - name: TEMP_DIR
+              value: /data/youtube/.tmp
+            - name: OUTPUT_TEMPLATE
+              value: "%(uploader)s/%(title)s [%(id)s].%(ext)s"
+          ports:
+            - name: webui
+              containerPort: 8081
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8081
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: media-library
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              # ffmpeg merging video+audio can spike
+              memory: 2Gi
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: metube-config
+        - name: media-library
+          persistentVolumeClaim:
+            claimName: media-library

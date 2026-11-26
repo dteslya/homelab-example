@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -i lo -j ACCEPT
+-A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+-A INPUT -m conntrack --ctstate INVALID -j DROP
+# Neighbor discovery and path MTU discovery depend on ICMPv6.
+-A INPUT -p ipv6-icmp -j ACCEPT
+-A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -m recent --name ssh --set
+-A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -m recent --name ssh --update --seconds {{ server_firewall_ssh_seconds }} --hitcount {{ server_firewall_ssh_hitcount }} -j DROP
+-A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -j ACCEPT
+{% for rule in server_firewall_allow if rule.src is not defined or ':' in rule.src %}
+-A INPUT{% if rule.src is defined %} -s {{ rule.src }}{% endif %} -p {{ rule.proto }} --dport {{ rule.port }} -m conntrack --ctstate NEW -m comment --comment "{{ rule.comment | default('') }}" -j ACCEPT
+{% endfor %}
+COMMIT

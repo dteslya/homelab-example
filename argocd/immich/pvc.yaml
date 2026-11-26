@@ -1,0 +1,27 @@
+# Block storage (ext4 on iSCSI): Postgres gets a local filesystem with
+# working fsync and locks. Sized for ~800M of data plus up to 1GB of WAL and growth.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: immich-postgres-iscsi
+  namespace: photos
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: truenas-iscsi-config
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: immich-model-cache
+  namespace: photos
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: truenas-nfs-config
+  resources:
+    requests:
+      storage: 10Gi

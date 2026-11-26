@@ -1,0 +1,17 @@
+# Sourced by hotplug-call after each acme.sh run that did something (a renewal that isn't due sends no event).
+# Reports the result to the Gatus external endpoint {{ openwrt_gatus_acme_endpoint }}.
+gatus_push() {
+	wget -q -O /dev/null -T 10 -t 3 --method=POST \
+		--header='Authorization: Bearer {{ openwrt_gatus_token }}' \
+		"{{ openwrt_gatus_url }}/api/v1/endpoints/{{ openwrt_gatus_acme_endpoint }}/external?$1" \
+		|| logger -t acme "Gatus heartbeat push failed ($ACTION)"
+}
+
+case "$ACTION" in
+issued|renewed)
+	gatus_push success=true
+	;;
+issue-failed|renew-failed)
+	gatus_push "success=false&error=$ACTION"
+	;;
+esac

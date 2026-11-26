@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radarr
+  namespace: media
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: radarr
+  template:
+    metadata:
+      labels:
+        app: radarr
+    spec:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: radarr
+          # https://www.linuxserver.io/our-images
+          image: lscr.io/linuxserver/radarr:7.0.3.10918-ls328
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: "Etc/UTC"
+            # Login is handled by Pocket ID at the gateway (argocd/media-sso);
+            # the API key is still enforced on /api.
+            - name: RADARR__AUTH__METHOD
+              value: External
+          ports:
+            - name: webui
+              containerPort: 7878
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: media-library
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: radarr-config-iscsi
+        - name: media-library
+          persistentVolumeClaim:
+            claimName: media-library

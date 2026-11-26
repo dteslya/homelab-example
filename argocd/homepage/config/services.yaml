@@ -1,0 +1,261 @@
+- Media:
+    - Jellyfin:
+        href: https://jellyfin.lab.example.com
+        icon: jellyfin.png
+        widget:
+          type: jellyfin
+          version: 2
+          url: http://jellyfin.media.svc.cluster.local:8096
+          key: "{{HOMEPAGE_VAR_JELLYFIN_KEY}}"
+    - Seerr:
+        href: https://seerr.lab.example.com
+        icon: overseerr.png
+        widget:
+          type: seerr
+          url: http://seerr.media.svc.cluster.local:5055
+          key: "{{HOMEPAGE_VAR_SEERR_KEY}}"
+    - BookOrbit:
+        href: https://books.lab.example.com
+        icon: bookorbit.png
+        siteMonitor: http://bookorbit.media.svc.cluster.local:3000/
+        widget:
+          type: bookorbit
+          url: http://bookorbit.media.svc.cluster.local:3000
+          key: "{{HOMEPAGE_VAR_BOOKORBIT_KEY}}"
+    - MeTube:
+        href: https://metube.lab.example.com
+        icon: metube.png
+        description: YouTube downloads
+        siteMonitor: http://metube.media.svc.cluster.local:8081/
+
+- Photos:
+    - Immich:
+        href: https://photos.lab.example.com
+        icon: immich.png
+        widget:
+          type: immich
+          version: 2
+          url: http://immich-server.photos.svc.cluster.local:2283
+          # storage is omitted: Immich only counts uploaded assets, and all ours are External Library (icloudpd)
+          fields: ["users", "photos", "videos"]
+          key: "{{HOMEPAGE_VAR_IMMICH_KEY}}"
+    - icloudpd (Bob):
+        href: https://icloudpd-bob.lab.example.com
+        icon: icloud.png
+        description: iCloud Photos sync, re-login here when MFA expires
+        siteMonitor: http://icloudpd-bob.photos.svc.cluster.local:8080
+    - icloudpd (Alice):
+        href: https://icloudpd-alice.lab.example.com
+        icon: icloud.png
+        description: iCloud Photos sync, re-login here when MFA expires
+        siteMonitor: http://icloudpd-alice.photos.svc.cluster.local:8080
+
+- Documents:
+    - Paperless:
+        href: https://paperless.lab.example.com
+        icon: paperless-ngx.png
+        widget:
+          type: paperlessngx
+          url: http://paperless.documents.svc.cluster.local:8000
+          key: "{{HOMEPAGE_VAR_PAPERLESS_KEY}}"
+    - BentoPDF:
+        href: https://pdf.lab.example.com
+        icon: bentopdf.png
+        description: PDF tools
+        siteMonitor: http://bentopdf.media.svc.cluster.local:8080/
+    - Karakeep:
+        href: https://bookmarks.lab.example.com
+        icon: karakeep.png
+        siteMonitor: http://karakeep.documents.svc.cluster.local:3000/api/health
+        widget:
+          type: karakeep
+          url: http://karakeep.documents.svc.cluster.local:3000
+          key: "{{HOMEPAGE_VAR_KARAKEEP_KEY}}"
+          # the widget shows at most 4 fields
+          fields: ["bookmarks", "favorites", "lists", "tags"]
+    - Vikunja:
+        href: https://tasks.lab.example.com
+        icon: vikunja.png
+        siteMonitor: http://vikunja.documents.svc.cluster.local:3456/health
+        widget:
+          type: vikunja
+          # version 2 is for Vikunja v1.0.0-rc4 and later
+          version: 2
+          url: http://vikunja.documents.svc.cluster.local:3456
+          key: "{{HOMEPAGE_VAR_VIKUNJA_KEY}}"
+          enableTaskList: true
+    - FreshRSS:
+        href: https://rss.lab.example.com
+        icon: freshrss.png
+        description: Feeds
+        siteMonitor: http://freshrss.documents.svc.cluster.local/api/
+
+# Hosted outside the lab; monitors hit the same health endpoints as Gatus
+- Personal:
+    - Vaultwarden:
+        href: https://vw.example.com
+        icon: vaultwarden.png
+        description: Passwords
+        siteMonitor: https://vw.example.com/alive
+    - Actual Budget:
+        href: https://actual.example.com
+        icon: actual-budget.png
+        description: Budget
+        siteMonitor: https://actual.example.com/health
+
+- Requests:
+    - Sonarr:
+        href: https://sonarr.lab.example.com
+        icon: sonarr.png
+        widget:
+          type: sonarr
+          url: http://sonarr.media.svc.cluster.local:8989
+          key: "{{HOMEPAGE_VAR_SONARR_KEY}}"
+          enableQueue: true
+    - Radarr:
+        href: https://radarr.lab.example.com
+        icon: radarr.png
+        widget:
+          type: radarr
+          url: http://radarr.media.svc.cluster.local:7878
+          key: "{{HOMEPAGE_VAR_RADARR_KEY}}"
+          enableQueue: true
+    - Prowlarr:
+        href: https://prowlarr.lab.example.com
+        icon: prowlarr.png
+        widget:
+          type: prowlarr
+          url: http://prowlarr.media.svc.cluster.local:9696
+          key: "{{HOMEPAGE_VAR_PROWLARR_KEY}}"
+    - Bazarr:
+        href: https://bazarr.lab.example.com
+        icon: bazarr.png
+        widget:
+          type: bazarr
+          url: http://bazarr.media.svc.cluster.local:6767
+          key: "{{HOMEPAGE_VAR_BAZARR_KEY}}"
+
+- Calendar:
+    - Releases:
+        widget:
+          type: calendar
+          view: agenda
+          maxEvents: 10
+          showTime: true
+          previousDays: 0
+          # service_group/service_name reuse the Sonarr/Radarr widgets' url and key
+          integrations:
+            - type: sonarr
+              service_group: Requests
+              service_name: Sonarr
+              color: teal
+              params:
+                unmonitored: false
+            - type: radarr
+              service_group: Requests
+              service_name: Radarr
+              color: amber
+              params:
+                unmonitored: false
+
+- Downloads:
+    - qBittorrent:
+        href: https://qbittorrent.lab.example.com
+        icon: qbittorrent.png
+        widget:
+          type: qbittorrent
+          url: http://qbittorrent.media.svc.cluster.local:8080
+          username: "{{HOMEPAGE_VAR_QBIT_USER}}"
+          password: "{{HOMEPAGE_VAR_QBIT_PASS}}"
+          enableLeechProgress: true
+    - SABnzbd:
+        href: https://sabnzbd.lab.example.com
+        icon: sabnzbd.png
+        widget:
+          type: sabnzbd
+          url: http://sabnzbd.media.svc.cluster.local:8080
+          key: "{{HOMEPAGE_VAR_SABNZBD_KEY}}"
+    - slskd:
+        href: https://slskd.lab.example.com
+        icon: slskd.png
+        widget:
+          type: slskd
+          url: http://slskd.media.svc.cluster.local:5030
+          key: "{{HOMEPAGE_VAR_SLSKD_KEY}}"
+    - Beets:
+        href: https://beets.lab.example.com
+        icon: beets.png
+        description: Music library (slskd imports)
+        siteMonitor: http://beets.media.svc.cluster.local:8337/
+    - Filebrowser:
+        href: https://filebrowser.lab.example.com
+        icon: filebrowser.png
+        siteMonitor: http://filebrowser.media.svc.cluster.local/health
+
+- Infrastructure:
+    - ArgoCD:
+        href: https://argocd.lab.example.com
+        icon: argo-cd.png
+    - Pocket ID:
+        href: https://id.lab.example.com
+        icon: pocket-id.png
+        description: SSO / user management
+        siteMonitor: http://pocket-id.pocket-id.svc.cluster.local:1411/healthz
+    - Gatus:
+        href: https://status.lab.example.com
+        icon: gatus.png
+        description: Service availability and backup heartbeats
+        siteMonitor: http://gatus.monitoring.svc.cluster.local:8080/health
+    - Renovate:
+        href: https://github.com/your-github-user/homelab/issues?q=is%3Aissue+is%3Aopen+%22Dependency+Dashboard%22
+        icon: mdi-update
+        description: Dependency Dashboard (pending updates)
+    - Grafana:
+        href: https://grafana.lab.example.com
+        icon: grafana.png
+        siteMonitor: http://grafana.monitoring.svc.cluster.local/api/health
+    - TrueNAS:
+        href: https://truenas.lab.example.com
+        icon: truenas.png
+        widget:
+          type: truenas
+          url: https://truenas.lab.example.com
+          version: 2
+          key: "{{HOMEPAGE_VAR_TRUENAS_KEY}}"
+          enablePools: true
+          nasType: scale
+    - UPS:
+        icon: apc.png
+        widget:
+          type: apcups
+          url: tcp://10.0.15.20:3551
+
+- Network:
+    - Headplane:
+        href: https://headplane.lab.example.com
+        icon: headscale.png
+        description: Headscale admin
+        siteMonitor: http://headplane.headplane.svc.cluster.local:3000/admin/healthz
+    # LuCI names only resolve via gw's dnsmasq (cluster DNS hits the public
+    # wildcard -> Envoy), and LuCI by IP fails the cert check, so monitor each
+    # router through its node exporter instead
+    - gw:
+        href: https://gw.lab.example.com
+        icon: openwrt.png
+        description: OpenWrt gateway
+        siteMonitor: http://10.0.15.1:9100/metrics
+    - ap1:
+        href: https://ap1.lab.example.com
+        icon: openwrt.png
+        description: OpenWrt AP
+        siteMonitor: http://10.0.15.11:9100/metrics
+    - ap2:
+        href: https://ap2.lab.example.com
+        icon: openwrt.png
+        description: OpenWrt AP
+        siteMonitor: http://10.0.15.12:9100/metrics
+    - sw1:
+        href: http://sw1.lab.example.com
+        icon: mdi-switch
+        description: Instant On 1830 switch
+        siteMonitor: http://10.0.15.4/

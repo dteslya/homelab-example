@@ -1,0 +1,36 @@
+---
+# Reloads services after files were installed. Unless SSH is confirmed working afterwards,
+# the device restores {{ openwrt_apply_backup }} and reloads again on its own.
+- name: Arm rollback timer
+  ansible.builtin.raw: >-
+    start-stop-daemon -S -b -m -p /tmp/ansible-rollback.pid -x /bin/sh -- -c
+    'sleep {{ openwrt_apply_rollback_seconds }};
+    logger -t ansible "no confirmation received, rolling back";
+    tar -C / -xf {{ openwrt_apply_backup }} && reload_config
+    {% for s in openwrt_apply_restart %}; /etc/init.d/{{ s }} restart{% endfor %}'
+  changed_when: false
+
+- name: Reload changed services
+  # Detached so a network restart doesn't kill the SSH session mid-command.
+  # Own pidfile: without -p, start-stop-daemon refuses because the rollback /bin/sh is already running.
+  # Removed first: a previous run's reload shell still alive (e.g. a slow `acme restart`) would
+  # otherwise make start-stop-daemon skip this one silently, leaving services unrestarted.
+  ansible.builtin.raw: >-
+    rm -f /tmp/ansible-reload.pid;
+    start-stop-daemon -S -b -m -p /tmp/ansible-reload.pid -x /bin/sh -- -c
+    'sleep 2; reload_config{% for s in openwrt_apply_restart %}; /etc/init.d/{{ s }} restart{% endfor %}'
+  changed_when: true
+
+- name: Wait for SSH to come back
+  delegate_to: localhost
+  ansible.builtin.command: >-
+    ssh -o BatchMode=yes -o ConnectTimeout=5 {{ ansible_user }}@{{ ansible_host }} true
+  register: openwrt_apply_ssh
+  until: openwrt_apply_ssh.rc == 0
+  retries: "{{ ((openwrt_apply_rollback_seconds - 30) / 10) | int }}"
+  delay: 10
+  changed_when: false
+
+- name: Disarm rollback timer
+  ansible.builtin.raw: start-stop-daemon -K -p /tmp/ansible-rollback.pid; rm -f /tmp/ansible-rollback.pid
+  changed_when: false
