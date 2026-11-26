@@ -326,7 +326,7 @@ endpoints:
       - "[CERTIFICATE_EXPIRATION] > 336h"
     <<: *external
   - name: blog
-    url: https://example.com/blog/  # Netlify; the root is only a JS redirect page
+    url: https://dteslya.net/blog/  # Netlify; the root is only a JS redirect page
     conditions:
       - "[STATUS] == 200"
       - "[CERTIFICATE_EXPIRATION] > 336h"

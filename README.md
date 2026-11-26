@@ -5,7 +5,7 @@ Talos Linux, ArgoCD and Ansible. It's exported from a private repo by a
 pipeline that rewrites anything identifying and stubs out every secret.
 Read it, borrow from it, or fork it and swap in your own values.
 
-Details in the blog post: https://example.com/blog/2026/11/26/my-homelab-and-self-hosting-setup
+Details in the blog post: https://dteslya.net/blog/2026/11/26/my-homelab-and-self-hosting-setup
 
 ## Layout
 
